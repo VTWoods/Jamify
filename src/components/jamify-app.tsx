@@ -8,6 +8,7 @@ import {
   GeminiRecommendationsTab,
   type GeminiView,
 } from "@/components/gemini-recommendations-tab";
+import { PwaInstallButton } from "@/components/pwa-install-button";
 import {
   SpotifyAssetsTab,
   type SpotifySection,
@@ -45,9 +46,12 @@ export function JamifyApp({
       <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-between px-6 py-12">
         <div className="space-y-8">
           <div className="space-y-3">
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-400">
-              <Disc3 className="h-3.5 w-3.5" />
-              <span>Jamify PWA</span>
+            <div className="flex items-center justify-between gap-2">
+              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-400">
+                <Disc3 className="h-3.5 w-3.5" />
+                <span>Jamify PWA</span>
+              </div>
+              <PwaInstallButton />
             </div>
             <h1 className="text-3xl font-bold tracking-tight text-zinc-50">
               Your Spotify Library, Supercharged by Gemini
@@ -103,15 +107,18 @@ export function JamifyApp({
           </div>
         </Link>
 
-        <button
-          type="button"
-          onClick={() => void handleLogout()}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
-          title="Sign out"
-        >
-          <LogOut className="h-3.5 w-3.5" />
-          Sign out
-        </button>
+        <div className="flex items-center gap-2">
+          <PwaInstallButton />
+          <button
+            type="button"
+            onClick={() => void handleLogout()}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+            title="Sign out"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            Sign out
+          </button>
+        </div>
       </header>
 
       {/* Main scrollable content */}

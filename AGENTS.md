@@ -78,6 +78,7 @@ Keep updates concise and factual—document what actually exists in the repo, no
 │   │   ├── commute-playlists-tab.tsx# Constant Morning/Evening commute UI & weekday previews
 │   │   ├── gemini-recommendations-tab.tsx # Gemini discovery UI, polling, Follow & Add to Spotify
 │   │   ├── jamify-app.tsx           # Authenticated PWA shell & bottom tab navigation
+│   │   ├── pwa-install-button.tsx   # Top-bar Install PWA button (beforeinstallprompt + iOS guide)
 │   │   ├── pwa-register.tsx         # Client-side service worker registration
 │   │   └── spotify-assets-tab.tsx   # Spotify dashboard, hourly sync & asset management UI
 │   ├── db/
@@ -143,7 +144,7 @@ All secrets are **server-side only** (never prefix secrets with `NEXT_PUBLIC_`).
 - **Spotify Web API (2026 spec):** Use `/v1/playlists/{id}/items` (reading `entry.item ?? entry.track` and deleting with `{ items: [{ uri }] }`), `/v1/me/playlists` for creating playlists, and `/v1/me/library?uris=...` (`PUT`/`DELETE`) for saving/removing tracks and following/unfollowing artists. Do not use deprecated `/playlists/{id}/tracks`, `/users/{id}/playlists`, or `DELETE /me/tracks` / `PUT|DELETE /me/following` endpoints.
 - **Gemini model policy:** Default to `gemini-4-hydrogen` via the `@google/genai` Interactions API (`background: true`), with automatic fallback to `gemini-3.5-flash` on quota/token errors or execution failures. Never use deprecated `gemini-2.5-*`, `gemini-2.0-*`, or `gemini-1.5-*` models.
 - **Reliable background jobs:** Long-running Gemini tasks must persist job state and `geminiInteractionId` in SQLite (`recommendation_jobs`) so client polls and container restarts recover cleanly without HTTP timeouts.
-- **PWA caching invariant:** `public/sw.js` must never cache `/api/*` routes or non-GET requests.
+- **PWA caching & pull-to-refresh invariants:** `public/sw.js` must never cache `/api/*` routes or non-GET requests; `src/app/globals.css` keeps `overscroll-behavior-y: none` on `html, body` so dragging down inside the installed PWA does not trigger browser pull-to-refresh.
 - **SQLite & Docker:** Keep `better-sqlite3` in `serverExternalPackages` in `next.config.ts`. Any schema change in `src/db/schema.ts` must be paired with `npm run db:generate` so `scripts/migrate.mjs` applies it automatically on container startup.
 - **Public repository hygiene:** Never commit personal domains, emails, IP addresses, Spotify IDs, `.env` files, or `.db` files. Use generic placeholders (`jamify.example.com`, `your_*`) in all examples and docs.
 

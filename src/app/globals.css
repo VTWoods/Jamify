@@ -4,6 +4,12 @@
   color-scheme: dark;
 }
 
+html,
+body {
+  overscroll-behavior: none;
+  overscroll-behavior-y: none;
+}
+
 body {
   background-color: #09090b;
   color: #fafafa;

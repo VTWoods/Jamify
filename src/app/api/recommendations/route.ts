@@ -1,0 +1,15 @@
+import { NextResponse } from "next/server";
+import { getSessionUser } from "@/lib/auth";
+import { getRecommendationsState } from "@/lib/gemini-recommendations";
+
+export const dynamic = "force-dynamic";
+
+export async function GET() {
+  const user = await getSessionUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const state = await getRecommendationsState(user.id);
+  return NextResponse.json(state);
+}

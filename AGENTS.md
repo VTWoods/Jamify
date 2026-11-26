@@ -8,7 +8,7 @@ Instructions and project context for AI coding agents working on **Jamify**.
 
 - **Repository:** `VTWoods/Jamify` (default branch: `main`)
 - **License:** MIT
-- **Status:** Tech stack scaffolded (Next.js App Router, PWA shell, SQLite/Drizzle schema & migrations, Docker/Caddy deployment examples). Core Spotify OAuth and Gemini playlist features are next.
+- **Status:** Core features implemented — Spotify OAuth with encrypted token storage, hourly-refreshed Spotify Assets Dashboard tab (listening history, liked songs, followed artists, personal playlists with tap-to-manage actions), and Gemini Recommendations tab (`gemini-4-hydrogen` default + `gemini-3.5-flash` fallback via reliable SQLite-backed background jobs).
 
 ## Keeping `AGENTS.md` Up to Date (Required)
 
@@ -22,6 +22,12 @@ Agents working in this repository **must** keep this file accurate and current a
 6. **Conventions & architecture** — key design decisions, patterns, or invariants future agents should follow.
 
 Keep updates concise and factual—document what actually exists in the repo, not speculative plans.
+
+## Features Implemented
+
+1. **Spotify OAuth 2.0 & Session Auth:** Server-side Authorization Code flow (`/api/auth/spotify/login`, `/api/auth/spotify/callback`, `/api/auth/logout`, `/api/auth/me`) with AES-256-GCM encrypted access/refresh tokens in SQLite, HMAC-SHA256 signed `HttpOnly` session cookies, automatic token refresh, and optional `ALLOWED_SPOTIFY_USER_IDS` allowlist.
+2. **Spotify Assets Tab (`SpotifyAssetsTab`):** Mobile dashboard summarizing Listening History, Liked Songs, Followed Artists, and Personal Playlists cached in SQLite. Automatically refreshes from Spotify every hour (plus manual "Sync now" and visibility-based staleness check). Tapping any summary card opens a filterable management view to unlike songs, unfollow artists, inspect playlist tracks, edit owned playlist names/descriptions, and remove tracks from owned playlists.
+3. **Gemini Recommendations Tab (`GeminiRecommendationsTab`):** Uses the synced Spotify library as context to recommend unheard artists (strictly excluding known artists) and curated custom playlists ready for one-tap **Follow** or **Add to Spotify**. Runs reliably as a SQLite-persisted background job kicked off by the **Refresh** button: defaults to `gemini-4-hydrogen` via the `@google/genai` Interactions API (`background: true`) with crash/restart recovery via persisted `geminiInteractionId`, and automatically falls back to `gemini-3.5-flash` on token/quota limits or API errors.
 
 ## Repository Structure
 
@@ -54,19 +60,33 @@ Keep updates concise and factual—document what actually exists in the repo, no
 │   └── migrate.mjs                  # Applies Drizzle SQLite migrations
 ├── src/
 │   ├── app/
-│   │   ├── api/health/route.ts      # GET /api/health (verifies SQLite connectivity)
+│   │   ├── api/
+│   │   │   ├── auth/                # Spotify OAuth login, callback, logout, me
+│   │   │   ├── health/route.ts      # GET /api/health (verifies SQLite connectivity)
+│   │   │   ├── recommendations/     # GET state, POST refresh, POST playlists/[id]/add
+│   │   │   └── spotify/             # Assets sync/fetch, liked-songs, followed-artists, playlists
 │   │   ├── globals.css              # Tailwind v4 global styles (dark mode default)
 │   │   ├── layout.tsx               # Mobile-first root layout, PWA metadata, SW registration
 │   │   ├── manifest.ts              # Next.js Web App Manifest route
-│   │   └── page.tsx                 # Starter home page
+│   │   └── page.tsx                 # Server entry loading session user into JamifyApp
 │   ├── components/
-│   │   └── pwa-register.tsx         # Client-side service worker registration
+│   │   ├── gemini-recommendations-tab.tsx # Gemini discovery UI, polling, Follow & Add to Spotify
+│   │   ├── jamify-app.tsx           # Authenticated PWA shell & bottom tab navigation
+│   │   ├── pwa-register.tsx         # Client-side service worker registration
+│   │   └── spotify-assets-tab.tsx   # Spotify dashboard, hourly sync & asset management UI
 │   ├── db/
 │   │   ├── index.ts                 # SQLite singleton (WAL mode, foreign keys) + health check
 │   │   ├── index.test.ts            # Vitest unit test for SQLite setup
-│   │   └── schema.ts                # Drizzle tables: users, spotify_tokens, playlist_rules
-│   └── lib/
-│       └── env.ts                   # Server-side Zod environment validation helpers
+│   │   └── schema.ts                # Drizzle tables (users, tokens, Spotify cache, Gemini jobs/recs)
+│   ├── lib/
+│   │   ├── auth.ts                  # Session cookies, Spotify OAuth scopes & allowlist helpers
+│   │   ├── crypto.ts                # AES-256-GCM token encryption & HMAC session signing
+│   │   ├── env.ts                   # Server-side Zod environment validation helpers
+│   │   ├── gemini-recommendations.ts# Reliable Gemini background job runner & fallback logic
+│   │   ├── spotify.ts               # Spotify API client, token refresh & catalog search helpers
+│   │   └── spotify-sync.ts          # Hourly SQLite Spotify asset sync & snapshot queries
+│   └── types/
+│       └── jamify.ts                # Shared frontend/API TypeScript interfaces
 ├── tsconfig.json                    # Strict TypeScript config (@/* -> ./src/*)
 └── vitest.config.ts                 # Vitest test runner config
 ```
@@ -75,10 +95,10 @@ Keep updates concise and factual—document what actually exists in the repo, no
 
 - **Runtime & Package Manager:** Node.js (20+ locally, `node:22-bookworm-slim` in Docker), `npm`
 - **Framework:** Next.js 15 (App Router, `output: "standalone"`), React 19, TypeScript (strict)
-- **Styling & Icons:** Tailwind CSS v4 (`@tailwindcss/postcss`), `lucide-react`
+- **Styling & Icons:** Tailwind CSS v4 (`4.1.11` pinned for Node 20 compatibility), `lucide-react`
 - **PWA:** Next.js `src/app/manifest.ts`, `public/sw.js`, `src/components/pwa-register.tsx`
 - **Database:** SQLite via `better-sqlite3` (WAL mode + foreign keys) + Drizzle ORM (`drizzle-orm`, `drizzle-kit`)
-- **APIs & Validation:** `@google/genai`, `@spotify/web-api-ts-sdk`, `zod`
+- **APIs & Validation:** `@google/genai` (`^3.5.0`, GA Interactions API), `@spotify/web-api-ts-sdk`, `zod`
 - **Testing & Linting:** Vitest, ESLint (`eslint-config-next`)
 
 ## Common Commands
@@ -103,12 +123,14 @@ All secrets are **server-side only** (never prefix secrets with `NEXT_PUBLIC_`).
 - `GEMINI_API_KEY` — Google Gemini API key
 - `SPOTIFY_CLIENT_ID` — Spotify Developer App client ID
 - `SPOTIFY_CLIENT_SECRET` — Spotify Developer App client secret
-- `SESSION_SECRET` — 32+ char random secret for session signing and token encryption
+- `SESSION_SECRET` — 32+ char random secret for session signing and AES-256-GCM token encryption
 - `ALLOWED_SPOTIFY_USER_IDS` — Optional comma-separated Spotify user ID allowlist
 
 ## Conventions & Architecture
 
 - **Server-only secrets & API calls:** All Gemini and Spotify API requests must execute in server-side Route Handlers (`src/app/api/**`) or Server Actions. Never expose API keys or OAuth tokens to the browser.
+- **Gemini model policy:** Default to `gemini-4-hydrogen` via the `@google/genai` Interactions API (`background: true`), with automatic fallback to `gemini-3.5-flash` on quota/token errors or execution failures. Never use deprecated `gemini-2.5-*`, `gemini-2.0-*`, or `gemini-1.5-*` models.
+- **Reliable background jobs:** Long-running Gemini tasks must persist job state and `geminiInteractionId` in SQLite (`recommendation_jobs`) so client polls and container restarts recover cleanly without HTTP timeouts.
 - **PWA caching invariant:** `public/sw.js` must never cache `/api/*` routes or non-GET requests.
 - **SQLite & Docker:** Keep `better-sqlite3` in `serverExternalPackages` in `next.config.ts`. Any schema change in `src/db/schema.ts` must be paired with `npm run db:generate` so `scripts/migrate.mjs` applies it automatically on container startup.
 - **Public repository hygiene:** Never commit personal domains, emails, IP addresses, Spotify IDs, `.env` files, or `.db` files. Use generic placeholders (`jamify.example.com`, `your_*`) in all examples and docs.

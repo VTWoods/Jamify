@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+.env
+.env.*
+data
+*.db
+*.db-wal
+*.db-shm
+coverage
+examples
+README.md
+AGENTS.md
+LICENSE

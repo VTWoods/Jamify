@@ -1,3 +1,21 @@
+# Dependencies
+node_modules/
+
+# Next.js & TypeScript build artifacts
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# Local SQLite database files
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Test coverage
+coverage/
+
 # Environment & secrets
 .env
 .env.*
@@ -16,3 +34,4 @@ Thumbs.db
 
 # Logs
 *.log
+npm-debug.log*

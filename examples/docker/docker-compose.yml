@@ -1,0 +1,20 @@
+services:
+  jamify:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: jamify
+    restart: unless-stopped
+    # Bind only to loopback so the app is reached exclusively through your reverse proxy (e.g., Caddy).
+    # If Caddy runs in Docker on the same user-defined network, you can remove `ports` and join that network instead.
+    ports:
+      - "127.0.0.1:3000:3000"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_PATH=/data/jamify.db
+    volumes:
+      - jamify_data:/data
+
+volumes:
+  jamify_data:

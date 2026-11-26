@@ -1,0 +1,42 @@
+{
+  "name": "jamify",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Manage custom playlists in Spotify with Gemini",
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1 --port 3000",
+    "build": "next build",
+    "start": "next start --hostname 0.0.0.0 --port 3000",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node scripts/migrate.mjs",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@google/genai": "^1.0.0",
+    "@spotify/web-api-ts-sdk": "^1.2.0",
+    "better-sqlite3": "^11.9.1",
+    "drizzle-orm": "^0.41.0",
+    "lucide-react": "^0.487.0",
+    "next": "^15.3.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.1.11",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "drizzle-kit": "^0.30.6",
+    "eslint": "^9.23.0",
+    "eslint-config-next": "^15.3.0",
+    "tailwindcss": "4.1.11",
+    "typescript": "^5.8.2",
+    "vitest": "^3.1.1"
+  }
+}

@@ -1,0 +1,23 @@
+# Example Caddyfile snippet for serving Jamify over HTTPS.
+# Replace jamify.example.com with your actual domain name.
+#
+# Caddy automatically provisions and renews TLS certificates, which is required
+# for installing Jamify as a PWA on mobile devices.
+
+jamify.example.com {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# If Caddy runs on the host and Jamify binds to 127.0.0.1:3000:
+	reverse_proxy 127.0.0.1:3000
+
+	# If Caddy runs in Docker on a shared network with the jamify service, use:
+	# reverse_proxy jamify:3000
+}

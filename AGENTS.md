@@ -95,6 +95,7 @@ Keep updates concise and factual—document what actually exists in the repo, no
 │   │   ├── env.ts                   # Server-side Zod environment validation helpers
 │   │   ├── gemini-recommendations.ts# Reliable Gemini background job runner & fallback logic
 │   │   ├── spotify.ts               # Spotify API client, token refresh & catalog search helpers
+│   │   ├── spotify-stats.ts         # Listening insights & library statistics computed from synced data
 │   │   └── spotify-sync.ts          # Hourly SQLite Spotify asset sync & snapshot queries
 │   └── types/
 │       └── jamify.ts                # Shared frontend/API TypeScript interfaces

@@ -285,8 +285,9 @@ export function CommutePlaylistsTab({
           </div>
           <p className="text-[11px] text-emerald-200/80">
             Running in the background on{" "}
-            <span className="font-mono">{latestJob.activeModel}</span>. Both
-            Morning and Evening 5-day lineups are being saved to SQLite.
+            <span className="font-mono">{latestJob.activeModel}</span>. Morning
+            (5 days), Evening (5 days), and Weekly Discovery lineups are being
+            saved to SQLite.
           </p>
         </div>
       )}

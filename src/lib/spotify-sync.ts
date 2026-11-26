@@ -368,12 +368,14 @@ export async function getSpotifyAssetsSnapshot(userId: string) {
       refreshIntervalMinutes: 60,
     },
     summary: {
-      historyCount: state?.historyTotal ?? history.length,
-      likedSongsTotal: state?.likedSongsTotal ?? likedSongs.length,
+      historyCount: Math.max(state?.historyTotal ?? 0, history.length),
+      likedSongsTotal: Math.max(state?.likedSongsTotal ?? 0, likedSongs.length),
       likedSongsCached: likedSongs.length,
-      followedArtistsTotal:
-        state?.followedArtistsTotal ?? followedArtists.length,
-      playlistsTotal: state?.playlistsTotal ?? playlists.length,
+      followedArtistsTotal: Math.max(
+        state?.followedArtistsTotal ?? 0,
+        followedArtists.length,
+      ),
+      playlistsTotal: Math.max(state?.playlistsTotal ?? 0, playlists.length),
       ownedPlaylistsCount: playlists.filter((p) => p.isOwnedByUser).length,
       topGenres: computeTopGenres(followedArtists, 5),
     },

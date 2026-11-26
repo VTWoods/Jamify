@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { GoogleGenAI } from "@google/genai";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/db";
 import {
@@ -8,6 +8,7 @@ import {
   commuteDailyEditions,
   commuteGenerationJobs,
   spotifyPlaylists,
+  spotifySyncState,
 } from "@/db/schema";
 import {
   getLocalClockParts,
@@ -385,6 +386,11 @@ async function createCommuteFallbackWithRetry<T>(
   let lastErr: unknown;
   for (let attempt = 0; attempt <= delaysMs.length; attempt++) {
     try {
+      if (attempt > 0) {
+        await updateCommuteJob(jobId, {
+          stage: `Generating with ${FALLBACK_GEMINI_MODEL} (retry ${attempt}/${delaysMs.length})`,
+        });
+      }
       return await fn();
     } catch (err) {
       lastErr = err;
@@ -393,7 +399,7 @@ async function createCommuteFallbackWithRetry<T>(
       }
       const waitSec = Math.round(delaysMs[attempt] / 1000);
       await updateCommuteJob(jobId, {
-        stage: `${FALLBACK_GEMINI_MODEL} busy (503) — retrying in ${waitSec}s (${attempt + 1}/${delaysMs.length})`,
+        stage: `${FALLBACK_GEMINI_MODEL} busy (503) — waiting ${waitSec}s before retry ${attempt + 1}/${delaysMs.length}`,
       });
       await new Promise((resolve) => setTimeout(resolve, delaysMs[attempt]));
     }
@@ -438,7 +444,7 @@ async function runCommuteGeminiWithFallback(
       interactionId = created.id;
       await updateCommuteJob(jobId, {
         geminiInteractionId: interactionId,
-        stage: `Generating 5 morning & 5 evening playlists with ${PRIMARY_GEMINI_MODEL}`,
+        stage: `Generating Morning, Evening & Weekly Discovery playlists with ${PRIMARY_GEMINI_MODEL}`,
       });
     }
 
@@ -464,6 +470,7 @@ async function runCommuteGeminiWithFallback(
       activeModel: FALLBACK_GEMINI_MODEL,
       fallbackUsed: true,
       fallbackReason: reason.slice(0, 300),
+      geminiInteractionId: null,
       stage: `Falling back to ${FALLBACK_GEMINI_MODEL}`,
     });
 
@@ -908,6 +915,18 @@ export async function applyCommuteDayToSpotify(
           spotifyUrl,
         },
       });
+
+    const [plCountRow] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(spotifyPlaylists)
+      .where(eq(spotifyPlaylists.userId, userId));
+    await db
+      .update(spotifySyncState)
+      .set({
+        playlistsTotal: Number(plCountRow?.count ?? 0),
+        updatedAt: now,
+      })
+      .where(eq(spotifySyncState.userId, userId));
 
     applied.push({
       kind,

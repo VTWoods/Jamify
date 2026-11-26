@@ -309,6 +309,11 @@ async function createFallbackWithRetry<T>(
   let lastErr: unknown;
   for (let attempt = 0; attempt <= delaysMs.length; attempt++) {
     try {
+      if (attempt > 0) {
+        await updateJob(jobId, {
+          stage: `Generating with ${FALLBACK_GEMINI_MODEL} (retry ${attempt}/${delaysMs.length})`,
+        });
+      }
       return await fn();
     } catch (err) {
       lastErr = err;
@@ -317,7 +322,7 @@ async function createFallbackWithRetry<T>(
       }
       const waitSec = Math.round(delaysMs[attempt] / 1000);
       await updateJob(jobId, {
-        stage: `${FALLBACK_GEMINI_MODEL} busy (503) — retrying in ${waitSec}s (${attempt + 1}/${delaysMs.length})`,
+        stage: `${FALLBACK_GEMINI_MODEL} busy (503) — waiting ${waitSec}s before retry ${attempt + 1}/${delaysMs.length}`,
       });
       await new Promise((resolve) => setTimeout(resolve, delaysMs[attempt]));
     }
@@ -395,6 +400,7 @@ async function runWithModelFallback(
       activeModel: FALLBACK_GEMINI_MODEL,
       fallbackUsed: true,
       fallbackReason: reason.slice(0, 300),
+      geminiInteractionId: null,
       stage: `Falling back to ${FALLBACK_GEMINI_MODEL}`,
     });
 

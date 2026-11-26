@@ -5,8 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
+  BarChart3,
   Clock,
   ExternalLink,
+  Flame,
   Heart,
   ListMusic,
   Loader2,
@@ -19,6 +21,7 @@ import {
   Check,
   X,
 } from "lucide-react";
+import { computeSpotifyStats } from "@/lib/spotify-stats";
 import type {
   PlaylistTrackItem,
   SpotifyAssetsSnapshot,
@@ -441,6 +444,11 @@ export function SpotifyAssetsTab({
         )
         .sort((a, b) => Number(b.isOwnedByUser) - Number(a.isOwnedByUser)),
     [snapshot?.playlists, q],
+  );
+
+  const stats = useMemo(
+    () => (snapshot ? computeSpotifyStats(snapshot) : null),
+    [snapshot],
   );
 
   if (loading && !snapshot) {
@@ -902,6 +910,7 @@ export function SpotifyAssetsTab({
   const summary = snapshot?.summary;
   const latestPlayed = snapshot?.history[0];
   const latestLiked = snapshot?.likedSongs[0];
+  const maxArtistPlays = stats?.topRecentArtists[0]?.plays ?? 1;
 
   return (
     <div className="space-y-5">
@@ -932,115 +941,250 @@ export function SpotifyAssetsTab({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
-        <Link
-          href="/spotify/history"
-          className="flex flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 text-left transition active:scale-[0.98] hover:border-emerald-500/40"
-        >
-          <div className="flex items-center justify-between">
-            <div className="rounded-xl bg-emerald-500/15 p-2 text-emerald-400">
-              <Clock className="h-5 w-5" />
+      {/* Interesting Statistics Section (Top) */}
+      {stats && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between px-1">
+            <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
+              <BarChart3 className="h-3.5 w-3.5" />
+              <span>Listening Insights</span>
             </div>
-            <span className="text-2xl font-bold text-zinc-50">
-              {summary?.historyCount ?? 0}
+            <span className="text-[11px] text-zinc-500">
+              {stats.uniqueArtistsInHistory} unique artists heard
             </span>
           </div>
-          <div className="mt-4">
-            <h3 className="text-sm font-semibold text-zinc-100">
-              Listening History
-            </h3>
-            <p className="mt-0.5 truncate text-[11px] text-zinc-400">
-              {latestPlayed
-                ? `Last: ${latestPlayed.trackName}`
-                : "Tap to view recent plays"}
-            </p>
-          </div>
-        </Link>
 
-        <Link
-          href="/spotify/liked"
-          className="flex flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 text-left transition active:scale-[0.98] hover:border-emerald-500/40"
-        >
-          <div className="flex items-center justify-between">
-            <div className="rounded-xl bg-rose-500/15 p-2 text-rose-400">
-              <Heart className="h-5 w-5" />
+          {/* 3-stat highlight strip */}
+          <div className="grid grid-cols-3 gap-2.5">
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-3">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                Variety
+              </p>
+              <p className="mt-1 text-lg font-bold text-zinc-50">
+                {stats.listeningVarietyPct}%
+              </p>
+              <p className="truncate text-[10px] text-zinc-400">
+                {stats.uniqueTracksInHistory} unique songs
+              </p>
             </div>
-            <span className="text-2xl font-bold text-zinc-50">
-              {summary?.likedSongsTotal ?? 0}
-            </span>
-          </div>
-          <div className="mt-4">
-            <h3 className="text-sm font-semibold text-zinc-100">Liked Songs</h3>
-            <p className="mt-0.5 truncate text-[11px] text-zinc-400">
-              {latestLiked
-                ? `Latest: ${latestLiked.trackName}`
-                : "Tap to manage saved tracks"}
-            </p>
-          </div>
-        </Link>
 
-        <Link
-          href="/spotify/artists"
-          className="flex flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 text-left transition active:scale-[0.98] hover:border-emerald-500/40"
-        >
-          <div className="flex items-center justify-between">
-            <div className="rounded-xl bg-sky-500/15 p-2 text-sky-400">
-              <Users className="h-5 w-5" />
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-3">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                Peak Time
+              </p>
+              <p className="mt-1 truncate text-lg font-bold text-zinc-50">
+                {stats.peakListeningWindow?.label ?? "—"}
+              </p>
+              <p className="truncate text-[10px] text-zinc-400">
+                {stats.peakListeningWindow
+                  ? `${stats.peakListeningWindow.pct}% · ${stats.peakListeningWindow.hourRange}`
+                  : "No plays yet"}
+              </p>
             </div>
-            <span className="text-2xl font-bold text-zinc-50">
-              {summary?.followedArtistsTotal ?? 0}
-            </span>
-          </div>
-          <div className="mt-4">
-            <h3 className="text-sm font-semibold text-zinc-100">
-              Followed Artists
-            </h3>
-            <p className="mt-0.5 truncate text-[11px] text-zinc-400">
-              {summary?.topGenres.length
-                ? summary.topGenres.slice(0, 2).join(", ")
-                : "Tap to manage artists"}
-            </p>
-          </div>
-        </Link>
 
-        <Link
-          href="/spotify/playlists"
-          className="flex flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 text-left transition active:scale-[0.98] hover:border-emerald-500/40"
-        >
-          <div className="flex items-center justify-between">
-            <div className="rounded-xl bg-violet-500/15 p-2 text-violet-400">
-              <ListMusic className="h-5 w-5" />
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-3">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                Artist Pop.
+              </p>
+              <p className="mt-1 text-lg font-bold text-zinc-50">
+                {stats.avgArtistPopularity !== null
+                  ? `${stats.avgArtistPopularity}/100`
+                  : "—"}
+              </p>
+              <p className="truncate text-[10px] text-zinc-400">
+                {stats.popularityLabel ?? `${stats.totalPlaylistTracks} pl tracks`}
+              </p>
             </div>
-            <span className="text-2xl font-bold text-zinc-50">
-              {summary?.playlistsTotal ?? 0}
-            </span>
           </div>
-          <div className="mt-4">
-            <h3 className="text-sm font-semibold text-zinc-100">
-              Personal Playlists
-            </h3>
-            <p className="mt-0.5 truncate text-[11px] text-zinc-400">
-              {summary?.ownedPlaylistsCount ?? 0} owned by you
-            </p>
-          </div>
-        </Link>
-      </div>
 
-      {summary && summary.topGenres.length > 0 && (
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4">
-          <p className="text-xs font-medium text-zinc-400">Your Top Genres</p>
-          <div className="mt-2.5 flex flex-wrap gap-1.5">
-            {summary.topGenres.map((genre) => (
-              <span
-                key={genre}
-                className="rounded-full border border-zinc-700/80 bg-zinc-800/80 px-2.5 py-1 text-xs capitalize text-zinc-200"
-              >
-                {genre}
-              </span>
-            ))}
-          </div>
-        </div>
+          {/* On Repeat + Top Played Artists */}
+          {(stats.mostPlayedTrack || stats.topRecentArtists.length > 0) && (
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 space-y-3.5">
+              {stats.mostPlayedTrack && (
+                <div className="flex items-start justify-between gap-3 border-b border-zinc-800/80 pb-3">
+                  <div className="min-w-0">
+                    <div className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-400">
+                      <Flame className="h-3.5 w-3.5" />
+                      <span>Most Replayed</span>
+                    </div>
+                    <p className="mt-0.5 truncate text-sm font-semibold text-zinc-100">
+                      {stats.mostPlayedTrack.trackName}
+                    </p>
+                    <p className="truncate text-xs text-zinc-400">
+                      {stats.mostPlayedTrack.artistNames}
+                    </p>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-bold tabular-nums text-amber-300">
+                    {stats.mostPlayedTrack.plays}×
+                  </span>
+                </div>
+              )}
+
+              {stats.topRecentArtists.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[11px] font-medium text-zinc-400">
+                    Top Played Artists
+                  </p>
+                  <div className="space-y-2">
+                    {stats.topRecentArtists.map((artist) => {
+                      const pct = Math.max(
+                        12,
+                        Math.round((artist.plays / maxArtistPlays) * 100),
+                      );
+                      return (
+                        <div key={artist.name} className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="truncate font-medium text-zinc-200">
+                              {artist.name}
+                            </span>
+                            <span className="ml-2 shrink-0 tabular-nums text-[11px] text-zinc-400">
+                              {artist.plays}{" "}
+                              {artist.plays === 1 ? "play" : "plays"}
+                            </span>
+                          </div>
+                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+                            <div
+                              className="h-full rounded-full bg-emerald-500/80"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Top Genres */}
+          {summary && summary.topGenres.length > 0 && (
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-zinc-400">
+                  Your Top Genres
+                </p>
+                <span className="text-[11px] text-zinc-500">
+                  {stats.totalPlaylistTracks.toLocaleString()} tracks in
+                  playlists
+                </span>
+              </div>
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {summary.topGenres.map((genre) => (
+                  <span
+                    key={genre}
+                    className="rounded-full border border-zinc-700/80 bg-zinc-800/80 px-2.5 py-1 text-xs capitalize text-zinc-200"
+                  >
+                    {genre}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
       )}
+
+      {/* Dig into your Spotify Assets (Bottom) */}
+      <section className="space-y-2.5">
+        <p className="px-1 text-xs font-semibold text-zinc-400">
+          Manage Your Library
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <Link
+            href="/spotify/history"
+            className="flex flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 text-left transition active:scale-[0.98] hover:border-emerald-500/40"
+          >
+            <div className="flex items-center justify-between">
+              <div className="rounded-xl bg-emerald-500/15 p-2 text-emerald-400">
+                <Clock className="h-5 w-5" />
+              </div>
+              <span className="text-2xl font-bold text-zinc-50">
+                {summary?.historyCount ?? 0}
+              </span>
+            </div>
+            <div className="mt-4">
+              <h3 className="text-sm font-semibold text-zinc-100">
+                Listening History
+              </h3>
+              <p className="mt-0.5 truncate text-[11px] text-zinc-400">
+                {latestPlayed
+                  ? `Last: ${latestPlayed.trackName}`
+                  : "Tap to view recent plays"}
+              </p>
+            </div>
+          </Link>
+
+          <Link
+            href="/spotify/liked"
+            className="flex flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 text-left transition active:scale-[0.98] hover:border-emerald-500/40"
+          >
+            <div className="flex items-center justify-between">
+              <div className="rounded-xl bg-rose-500/15 p-2 text-rose-400">
+                <Heart className="h-5 w-5" />
+              </div>
+              <span className="text-2xl font-bold text-zinc-50">
+                {summary?.likedSongsTotal ?? 0}
+              </span>
+            </div>
+            <div className="mt-4">
+              <h3 className="text-sm font-semibold text-zinc-100">
+                Liked Songs
+              </h3>
+              <p className="mt-0.5 truncate text-[11px] text-zinc-400">
+                {latestLiked
+                  ? `Latest: ${latestLiked.trackName}`
+                  : "Tap to manage saved tracks"}
+              </p>
+            </div>
+          </Link>
+
+          <Link
+            href="/spotify/artists"
+            className="flex flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 text-left transition active:scale-[0.98] hover:border-emerald-500/40"
+          >
+            <div className="flex items-center justify-between">
+              <div className="rounded-xl bg-sky-500/15 p-2 text-sky-400">
+                <Users className="h-5 w-5" />
+              </div>
+              <span className="text-2xl font-bold text-zinc-50">
+                {summary?.followedArtistsTotal ?? 0}
+              </span>
+            </div>
+            <div className="mt-4">
+              <h3 className="text-sm font-semibold text-zinc-100">
+                Followed Artists
+              </h3>
+              <p className="mt-0.5 truncate text-[11px] text-zinc-400">
+                {summary?.topGenres.length
+                  ? summary.topGenres.slice(0, 2).join(", ")
+                  : "Tap to manage artists"}
+              </p>
+            </div>
+          </Link>
+
+          <Link
+            href="/spotify/playlists"
+            className="flex flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 text-left transition active:scale-[0.98] hover:border-emerald-500/40"
+          >
+            <div className="flex items-center justify-between">
+              <div className="rounded-xl bg-violet-500/15 p-2 text-violet-400">
+                <ListMusic className="h-5 w-5" />
+              </div>
+              <span className="text-2xl font-bold text-zinc-50">
+                {summary?.playlistsTotal ?? 0}
+              </span>
+            </div>
+            <div className="mt-4">
+              <h3 className="text-sm font-semibold text-zinc-100">
+                Personal Playlists
+              </h3>
+              <p className="mt-0.5 truncate text-[11px] text-zinc-400">
+                {summary?.ownedPlaylistsCount ?? 0} owned by you
+              </p>
+            </div>
+          </Link>
+        </div>
+      </section>
     </div>
   );
 }

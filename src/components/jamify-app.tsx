@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Disc3, Library, LogOut, Sparkles } from "lucide-react";
+import { Car, Disc3, Library, LogOut, Sparkles } from "lucide-react";
+import { CommutePlaylistsTab } from "@/components/commute-playlists-tab";
 import {
   GeminiRecommendationsTab,
   type GeminiView,
@@ -11,9 +12,9 @@ import {
   SpotifyAssetsTab,
   type SpotifySection,
 } from "@/components/spotify-assets-tab";
-import type { SessionUser } from "@/types/jamify";
+import type { CommuteKind, SessionUser } from "@/types/jamify";
 
-export type TabId = "spotify" | "gemini";
+export type TabId = "spotify" | "commute" | "gemini";
 
 export function JamifyApp({
   initialUser,
@@ -21,6 +22,7 @@ export function JamifyApp({
   activeTab = "spotify",
   spotifySection = "overview",
   spotifyPlaylistId = null,
+  commuteKind = "morning",
   geminiView = "artists",
 }: {
   initialUser: SessionUser | null;
@@ -28,6 +30,7 @@ export function JamifyApp({
   activeTab?: TabId;
   spotifySection?: SpotifySection;
   spotifyPlaylistId?: string | null;
+  commuteKind?: CommuteKind;
   geminiView?: GeminiView;
 }) {
   const [user, setUser] = useState<SessionUser | null>(initialUser);
@@ -118,6 +121,8 @@ export function JamifyApp({
             section={spotifySection}
             playlistId={spotifyPlaylistId}
           />
+        ) : activeTab === "commute" ? (
+          <CommutePlaylistsTab activeKind={commuteKind} />
         ) : (
           <GeminiRecommendationsTab activeView={geminiView} />
         )}
@@ -128,7 +133,7 @@ export function JamifyApp({
         aria-label="Primary navigation"
         className="fixed bottom-0 left-0 right-0 z-20 border-t border-zinc-800/90 bg-zinc-950/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md"
       >
-        <div className="mx-auto grid max-w-lg grid-cols-2">
+        <div className="mx-auto grid max-w-lg grid-cols-3">
           <Link
             href="/spotify"
             className={`flex flex-col items-center justify-center gap-1 py-3 text-xs font-medium transition ${
@@ -139,6 +144,18 @@ export function JamifyApp({
           >
             <Library className="h-5 w-5" />
             <span>Spotify</span>
+          </Link>
+
+          <Link
+            href="/commute/morning"
+            className={`flex flex-col items-center justify-center gap-1 py-3 text-xs font-medium transition ${
+              activeTab === "commute"
+                ? "text-emerald-400"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            <Car className="h-5 w-5" />
+            <span>Commute</span>
           </Link>
 
           <Link

@@ -30,7 +30,10 @@ ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 ENV DATABASE_PATH=/data/jamify.db
 
-RUN groupadd --system --gid 1001 nodejs \
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends tzdata \
+  && rm -rf /var/lib/apt/lists/* \
+  && groupadd --system --gid 1001 nodejs \
   && useradd --system --uid 1001 --gid nodejs nextjs \
   && mkdir -p /data \
   && chown -R nextjs:nodejs /data

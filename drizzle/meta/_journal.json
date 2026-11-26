@@ -15,6 +15,13 @@
       "when": 1795712319016,
       "tag": "0001_bouncy_captain_flint",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1795719362630,
+      "tag": "0002_spicy_garia",
+      "breakpoints": true
     }
   ]
 }

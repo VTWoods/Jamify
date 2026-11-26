@@ -137,3 +137,72 @@ export interface RecommendationsState {
   artists: RecommendedArtistItem[];
   playlists: RecommendedPlaylistItem[];
 }
+
+export type CommuteKind = "morning" | "evening";
+
+export interface CommuteConfigItem {
+  id: string;
+  kind: CommuteKind;
+  name: string;
+  description: string;
+  targetMinutes: number;
+  enabled: boolean;
+  spotifyPlaylistId: string | null;
+  spotifyUrl: string | null;
+  lastGeneratedWeekKey: string | null;
+  lastAppliedDateKey: string | null;
+  lastAppliedWeekday: number | null;
+  lastAppliedAt: string | null;
+  updatedAt: string;
+}
+
+export interface CommuteTrackClientItem {
+  title: string;
+  artist: string;
+  durationMs: number;
+  spotifyUri: string | null;
+  spotifyUrl: string | null;
+  albumImageUrl: string | null;
+}
+
+export interface CommuteDailyEditionItem {
+  id: string;
+  weekKey: string;
+  kind: CommuteKind;
+  weekday: number;
+  theme: string;
+  totalDurationMs: number;
+  tracks: CommuteTrackClientItem[];
+}
+
+export interface CommuteGenerationJobItem {
+  id: string;
+  weekKey: string;
+  trigger: string;
+  status: string;
+  stage: string;
+  primaryModel: string;
+  activeModel: string;
+  fallbackUsed: boolean;
+  fallbackReason: string | null;
+  errorMessage: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  updatedAt: string;
+}
+
+export interface CommuteState {
+  schedule: {
+    timeZone: string;
+    currentDateKey: string;
+    currentWeekday: number;
+    currentWeekKey: string;
+    weeklyGenerationLabel: string;
+    dailyRotationLabel: string;
+  };
+  configs: CommuteConfigItem[];
+  latestJob: CommuteGenerationJobItem | null;
+  activeWeekKey: string | null;
+  morningEditions: CommuteDailyEditionItem[];
+  eveningEditions: CommuteDailyEditionItem[];
+}

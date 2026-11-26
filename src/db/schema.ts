@@ -182,3 +182,69 @@ export const recommendedPlaylists = sqliteTable("recommended_playlists", {
   addedSpotifyPlaylistId: text("added_spotify_playlist_id"),
   addedSpotifyUrl: text("added_spotify_url"),
 });
+
+export const commuteConfigs = sqliteTable("commute_configs", {
+  id: text("id").primaryKey(), // `${userId}:${kind}`
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(), // "morning" | "evening"
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  targetMinutes: integer("target_minutes").notNull().default(60),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  spotifyPlaylistId: text("spotify_playlist_id"),
+  spotifyUrl: text("spotify_url"),
+  lastGeneratedWeekKey: text("last_generated_week_key"),
+  lastAppliedDateKey: text("last_applied_date_key"),
+  lastAppliedWeekday: integer("last_applied_weekday"),
+  lastAppliedAt: integer("last_applied_at", { mode: "timestamp" }),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+export const commuteGenerationJobs = sqliteTable("commute_generation_jobs", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  weekKey: text("week_key").notNull(),
+  trigger: text("trigger").notNull().default("manual"), // "scheduled" | "manual"
+  status: text("status").notNull().default("queued"), // queued | running | completed | failed
+  stage: text("stage").notNull().default("Queued commute playlist generation"),
+  primaryModel: text("primary_model").notNull().default("gemini-4-hydrogen"),
+  activeModel: text("active_model").notNull().default("gemini-4-hydrogen"),
+  fallbackUsed: integer("fallback_used", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  fallbackReason: text("fallback_reason"),
+  geminiInteractionId: text("gemini_interaction_id"),
+  errorMessage: text("error_message"),
+  startedAt: integer("started_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  completedAt: integer("completed_at", { mode: "timestamp" }),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+export const commuteDailyEditions = sqliteTable("commute_daily_editions", {
+  id: text("id").primaryKey(), // `${userId}:${weekKey}:${kind}:${weekday}`
+  jobId: text("job_id")
+    .notNull()
+    .references(() => commuteGenerationJobs.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  weekKey: text("week_key").notNull(),
+  kind: text("kind").notNull(), // "morning" | "evening"
+  weekday: integer("weekday").notNull(), // 1 (Mon) .. 5 (Fri)
+  theme: text("theme").notNull(),
+  tracksJson: text("tracks_json").notNull().default("[]"),
+  totalDurationMs: integer("total_duration_ms").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});

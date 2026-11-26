@@ -184,6 +184,7 @@ export interface SpotifyTrackItem {
   id: string;
   uri: string;
   name: string;
+  duration_ms?: number;
   artists: Array<{ id: string; name: string }>;
   album: {
     name: string;
@@ -288,4 +289,34 @@ export async function createSpotifyPlaylistWithTracks(
     id: created.id,
     url: created.external_urls?.spotify ?? null,
   };
+}
+
+export async function replaceSpotifyPlaylistItems(
+  userId: string,
+  playlistId: string,
+  trackUris: string[],
+): Promise<void> {
+  const firstChunk = trackUris.slice(0, 100);
+  await spotifyFetch(
+    userId,
+    `/playlists/${encodeURIComponent(playlistId)}/items`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ uris: firstChunk }),
+    },
+  );
+
+  for (let i = 100; i < trackUris.length; i += 100) {
+    const chunk = trackUris.slice(i, i + 100);
+    if (chunk.length > 0) {
+      await spotifyFetch(
+        userId,
+        `/playlists/${encodeURIComponent(playlistId)}/items`,
+        {
+          method: "POST",
+          body: JSON.stringify({ uris: chunk }),
+        },
+      );
+    }
+  }
 }

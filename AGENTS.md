@@ -28,6 +28,7 @@ Keep updates concise and factual—document what actually exists in the repo, no
 1. **Spotify OAuth 2.0 & Session Auth:** Server-side Authorization Code flow (`/api/auth/spotify/login`, `/api/auth/spotify/callback`, `/api/auth/logout`, `/api/auth/me`) with dynamic request-origin redirect URI matching (`x-forwarded-proto`/`x-forwarded-host` for Caddy or client `Host` header, falling back to `APP_URL`), AES-256-GCM encrypted access/refresh tokens in SQLite, HMAC-SHA256 signed `HttpOnly` session cookies, automatic token refresh, and optional `ALLOWED_SPOTIFY_USER_IDS` allowlist.
 2. **Spotify Assets Tab (`SpotifyAssetsTab`):** Mobile dashboard summarizing Listening History (accumulates full play history indefinitely in SQLite across hourly syncs, displaying up to the newest 1,000 plays in the UI, since Spotify's recently-played API returns 50 per fetch), Liked Songs, Followed Artists, and Personal Playlists cached in SQLite. Automatically refreshes from Spotify every hour (plus manual "Sync now" and visibility-based staleness check). Tapping any summary card opens a filterable management view to unlike songs, unfollow artists, inspect playlist tracks, edit owned playlist names/descriptions, remove tracks from owned playlists, and remove/unfollow playlists from the user's Spotify profile.
 3. **Gemini Recommendations Tab (`GeminiRecommendationsTab`):** Uses the synced Spotify library as context to recommend unheard artists (strictly excluding known artists) and curated custom playlists ready for one-tap **Follow** or **Add to Spotify**. Runs reliably as a SQLite-persisted background job kicked off by the **Refresh** button: defaults to `gemini-4-hydrogen` via the `@google/genai` Interactions API (`background: true`) with crash/restart recovery via persisted `geminiInteractionId`, and automatically falls back to `gemini-3.5-flash` on token/quota limits or API errors.
+4. **Constant Commute Playlists Tab (`CommutePlaylistsTab` + 1 AM Server Scheduler):** Maintains two constant ~1-hour Spotify playlists composed strictly of the user's followed artists — **Morning Commute** (upbeat, higher-tempo) and **Evening Commute** (chill, relaxing). A Next.js server-side scheduler (`src/instrumentation.ts` -> `src/lib/commute-scheduler.ts`) runs every Sunday at 1:00 AM (`TZ`) to generate 5 weekday editions (Mon–Fri) for both playlists via Gemini (`gemini-4-hydrogen` default + `gemini-3.5-flash` fallback) and saves them in SQLite (`commute_daily_editions`), then rotates each constant Spotify playlist (`PUT /v1/playlists/{id}/items`) every weekday (Mon–Fri) at 1:00 AM with that day's edition. Also supports manual "Generate Week", per-day "Sync to Spotify", and Auto ON/Paused toggles at `/commute/morning` and `/commute/evening`.
 
 ## Repository Structure
 
@@ -62,9 +63,11 @@ Keep updates concise and factual—document what actually exists in the repo, no
 │   ├── app/
 │   │   ├── api/
 │   │   │   ├── auth/                # Spotify OAuth login, callback, logout, me
+│   │   │   ├── commute/             # GET state, POST generate, POST apply, PATCH config
 │   │   │   ├── health/route.ts      # GET /api/health (verifies SQLite connectivity)
 │   │   │   ├── recommendations/     # GET state, POST refresh, POST playlists/[id]/add
 │   │   │   └── spotify/             # Assets sync/fetch, liked-songs, followed-artists, playlists
+│   │   ├── commute/                 # /commute & /commute/[kind] (morning | evening)
 │   │   ├── gemini/                  # /gemini & /gemini/[view] (artists | playlists)
 │   │   ├── spotify/                 # /spotify, /spotify/[section], /spotify/playlists/[playlistId]
 │   │   ├── globals.css              # Tailwind v4 global styles (dark mode default)
@@ -72,6 +75,7 @@ Keep updates concise and factual—document what actually exists in the repo, no
 │   │   ├── manifest.ts              # Next.js Web App Manifest route
 │   │   └── page.tsx                 # Server entry loading session user into JamifyApp
 │   ├── components/
+│   │   ├── commute-playlists-tab.tsx# Constant Morning/Evening commute UI & weekday previews
 │   │   ├── gemini-recommendations-tab.tsx # Gemini discovery UI, polling, Follow & Add to Spotify
 │   │   ├── jamify-app.tsx           # Authenticated PWA shell & bottom tab navigation
 │   │   ├── pwa-register.tsx         # Client-side service worker registration
@@ -79,9 +83,13 @@ Keep updates concise and factual—document what actually exists in the repo, no
 │   ├── db/
 │   │   ├── index.ts                 # SQLite singleton (WAL mode, foreign keys) + health check
 │   │   ├── index.test.ts            # Vitest unit test for SQLite setup
-│   │   └── schema.ts                # Drizzle tables (users, tokens, Spotify cache, Gemini jobs/recs)
+│   │   └── schema.ts                # Drizzle tables (users, tokens, Spotify cache, Gemini & commute tables)
+│   ├── instrumentation.ts           # Next.js server startup hook launching the 1 AM commute scheduler
 │   ├── lib/
 │   │   ├── auth.ts                  # Session cookies, Spotify OAuth scopes & allowlist helpers
+│   │   ├── commute-playlists.ts     # Weekly 5-day Gemini commute generator & Spotify rotator
+│   │   ├── commute-schedule-clock.ts# Timezone-aware Sunday 1 AM & weekday 1 AM clock helpers
+│   │   ├── commute-scheduler.ts     # Minute-tick server scheduler for automatic generation/rotation
 │   │   ├── crypto.ts                # AES-256-GCM token encryption & HMAC session signing
 │   │   ├── env.ts                   # Server-side Zod environment validation helpers
 │   │   ├── gemini-recommendations.ts# Reliable Gemini background job runner & fallback logic
@@ -127,6 +135,7 @@ All secrets are **server-side only** (never prefix secrets with `NEXT_PUBLIC_`).
 - `SPOTIFY_CLIENT_SECRET` — Spotify Developer App client secret
 - `SESSION_SECRET` — 32+ char random secret for session signing and AES-256-GCM token encryption
 - `ALLOWED_SPOTIFY_USER_IDS` — Optional comma-separated Spotify user ID allowlist
+- `TZ` — Optional IANA timezone (e.g., `America/New_York`) so Sunday 1:00 AM generation and Mon–Fri 1:00 AM rotations run in local time inside Docker (`tzdata` is installed in the container)
 
 ## Conventions & Architecture
 

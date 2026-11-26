@@ -28,9 +28,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = followArtistSchema.parse(await request.json());
+    const uri = `spotify:artist:${body.artistId}`;
     await spotifyFetch(
       user.id,
-      `/me/following?type=artist&ids=${encodeURIComponent(body.artistId)}`,
+      `/me/library?uris=${encodeURIComponent(uri)}`,
       { method: "PUT" },
     );
 

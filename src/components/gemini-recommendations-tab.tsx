@@ -1,23 +1,31 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
   AlertTriangle,
   Check,
   ChevronDown,
   ChevronUp,
   ExternalLink,
+  ListMusic,
   ListPlus,
   Loader2,
   RefreshCw,
   Sparkles,
   UserPlus,
+  Users,
 } from "lucide-react";
 import type { RecommendationsState } from "@/types/jamify";
 
 const POLL_INTERVAL_MS = 3_000;
+export type GeminiView = "artists" | "playlists";
 
-export function GeminiRecommendationsTab() {
+export function GeminiRecommendationsTab({
+  activeView = "artists",
+}: {
+  activeView?: GeminiView;
+}) {
   const [state, setState] = useState<RecommendationsState | null>(null);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
@@ -308,11 +316,50 @@ export function GeminiRecommendationsTab() {
         </div>
       )}
 
+      {/* Separate buttons for Suggested Artists and Suggested Playlists */}
+      {completedJob && state && (
+        <div className="grid grid-cols-2 gap-2.5">
+          <Link
+            href="/gemini/artists"
+            className={`flex items-center justify-between rounded-2xl border px-3.5 py-3 text-left transition ${
+              activeView === "artists"
+                ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-300"
+                : "border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:border-zinc-700"
+            }`}
+          >
+            <span className="inline-flex items-center gap-2 text-xs font-semibold">
+              <Users className="h-4 w-4" />
+              Suggested Artists
+            </span>
+            <span className="rounded-full bg-zinc-950/60 px-2 py-0.5 text-[11px] font-bold tabular-nums">
+              {state.artists.length}
+            </span>
+          </Link>
+
+          <Link
+            href="/gemini/playlists"
+            className={`flex items-center justify-between rounded-2xl border px-3.5 py-3 text-left transition ${
+              activeView === "playlists"
+                ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-300"
+                : "border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:border-zinc-700"
+            }`}
+          >
+            <span className="inline-flex items-center gap-2 text-xs font-semibold">
+              <ListMusic className="h-4 w-4" />
+              Suggested Playlists
+            </span>
+            <span className="rounded-full bg-zinc-950/60 px-2 py-0.5 text-[11px] font-bold tabular-nums">
+              {state.playlists.length}
+            </span>
+          </Link>
+        </div>
+      )}
+
       {/* Recommended Artists */}
-      {state && state.artists.length > 0 && (
+      {activeView === "artists" && state && state.artists.length > 0 && (
         <section className="space-y-3">
           <h2 className="text-sm font-semibold text-zinc-100">
-            New Artists For You
+            Suggested Artists
           </h2>
           <div className="space-y-3">
             {state.artists.map((artist) => (
@@ -387,10 +434,10 @@ export function GeminiRecommendationsTab() {
       )}
 
       {/* Recommended Playlists */}
-      {state && state.playlists.length > 0 && (
+      {activeView === "playlists" && state && state.playlists.length > 0 && (
         <section className="space-y-3">
           <h2 className="text-sm font-semibold text-zinc-100">
-            Playlists Curated For You
+            Suggested Playlists
           </h2>
           <div className="space-y-3">
             {state.playlists.map((playlist) => {

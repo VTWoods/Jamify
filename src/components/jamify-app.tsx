@@ -1,22 +1,36 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Disc3, Library, LogOut, Sparkles } from "lucide-react";
-import { GeminiRecommendationsTab } from "@/components/gemini-recommendations-tab";
-import { SpotifyAssetsTab } from "@/components/spotify-assets-tab";
+import {
+  GeminiRecommendationsTab,
+  type GeminiView,
+} from "@/components/gemini-recommendations-tab";
+import {
+  SpotifyAssetsTab,
+  type SpotifySection,
+} from "@/components/spotify-assets-tab";
 import type { SessionUser } from "@/types/jamify";
 
-type TabId = "spotify" | "gemini";
+export type TabId = "spotify" | "gemini";
 
 export function JamifyApp({
   initialUser,
   authError,
+  activeTab = "spotify",
+  spotifySection = "overview",
+  spotifyPlaylistId = null,
+  geminiView = "artists",
 }: {
   initialUser: SessionUser | null;
   authError?: string | null;
+  activeTab?: TabId;
+  spotifySection?: SpotifySection;
+  spotifyPlaylistId?: string | null;
+  geminiView?: GeminiView;
 }) {
   const [user, setUser] = useState<SessionUser | null>(initialUser);
-  const [activeTab, setActiveTab] = useState<TabId>("spotify");
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -72,7 +86,7 @@ export function JamifyApp({
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col bg-zinc-950">
       {/* Sticky header */}
       <header className="sticky top-0 z-20 flex items-center justify-between border-b border-zinc-800/80 bg-zinc-950/90 px-4 py-3 backdrop-blur-md">
-        <div className="flex items-center gap-2">
+        <Link href="/spotify" className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-400">
             <Disc3 className="h-5 w-5" />
           </div>
@@ -84,7 +98,7 @@ export function JamifyApp({
               {user.displayName ?? user.id}
             </p>
           </div>
-        </div>
+        </Link>
 
         <button
           type="button"
@@ -100,9 +114,12 @@ export function JamifyApp({
       {/* Main scrollable content */}
       <main className="flex-1 px-4 pb-24 pt-4">
         {activeTab === "spotify" ? (
-          <SpotifyAssetsTab />
+          <SpotifyAssetsTab
+            section={spotifySection}
+            playlistId={spotifyPlaylistId}
+          />
         ) : (
-          <GeminiRecommendationsTab />
+          <GeminiRecommendationsTab activeView={geminiView} />
         )}
       </main>
 
@@ -112,9 +129,8 @@ export function JamifyApp({
         className="fixed bottom-0 left-0 right-0 z-20 border-t border-zinc-800/90 bg-zinc-950/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md"
       >
         <div className="mx-auto grid max-w-lg grid-cols-2">
-          <button
-            type="button"
-            onClick={() => setActiveTab("spotify")}
+          <Link
+            href="/spotify"
             className={`flex flex-col items-center justify-center gap-1 py-3 text-xs font-medium transition ${
               activeTab === "spotify"
                 ? "text-emerald-400"
@@ -123,11 +139,10 @@ export function JamifyApp({
           >
             <Library className="h-5 w-5" />
             <span>Spotify</span>
-          </button>
+          </Link>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab("gemini")}
+          <Link
+            href="/gemini/artists"
             className={`flex flex-col items-center justify-center gap-1 py-3 text-xs font-medium transition ${
               activeTab === "gemini"
                 ? "text-emerald-400"
@@ -136,7 +151,7 @@ export function JamifyApp({
           >
             <Sparkles className="h-5 w-5" />
             <span>Gemini</span>
-          </button>
+          </Link>
         </div>
       </nav>
     </div>

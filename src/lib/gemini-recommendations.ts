@@ -23,8 +23,15 @@ export const FALLBACK_GEMINI_MODEL = "gemini-3.5-flash";
 const JOB_POLL_INTERVAL_MS = 3_000;
 const JOB_MAX_WAIT_MS = 4 * 60 * 1000; // 4 minutes
 const STALE_JOB_MS = 6 * 60 * 1000; // 6 minutes
+const RECOVERY_HEARTBEAT_GAP_MS = 15_000;
 
-const activeRunners = new Set<string>();
+// Share active runner tracking across all Next.js route bundles in the same process
+const globalForRunners = globalThis as typeof globalThis & {
+  __jamifyRecommendationRunners?: Set<string>;
+};
+const activeRunners =
+  globalForRunners.__jamifyRecommendationRunners ??
+  (globalForRunners.__jamifyRecommendationRunners = new Set<string>());
 
 export const recommendationsOutputSchema = z.object({
   artists: z
@@ -157,7 +164,7 @@ export function buildSpotifyTasteContext(
     .join("; ");
 
   const historySummary = snapshot.history
-    .slice(0, 35)
+    .slice(0, 80)
     .map((h) => `${h.trackName} — ${h.artistNames}`)
     .join("\n");
 
@@ -407,11 +414,20 @@ async function runRecommendationJob(
       stage: "Matching recommendations with Spotify catalog",
     });
 
-    // Filter out any artist already in the user's library/history, then enrich via Spotify search
-    const freshArtists = result.output.artists.filter(
-      (a) => !knownArtistsNormalized.has(a.name.trim().toLowerCase()),
-    );
-    const enrichedArtists = await Promise.all(
+    // Filter out any artist already in the user's library/history and deduplicate by name/Spotify ID
+    const seenArtistNames = new Set<string>();
+    const freshArtists = result.output.artists.filter((a) => {
+      const normalized = a.name.trim().toLowerCase();
+      if (
+        knownArtistsNormalized.has(normalized) ||
+        seenArtistNames.has(normalized)
+      ) {
+        return false;
+      }
+      seenArtistNames.add(normalized);
+      return true;
+    });
+    const enrichedArtistsRaw = await Promise.all(
       freshArtists.map(async (artist) => {
         const match = await searchSpotifyArtist(userId, artist.name);
         return {
@@ -429,6 +445,15 @@ async function runRecommendationJob(
         };
       }),
     );
+
+    const seenSpotifyArtistIds = new Set<string>();
+    const enrichedArtists = enrichedArtistsRaw.filter((artist) => {
+      const key =
+        artist.spotifyArtistId ?? artist.name.trim().toLowerCase();
+      if (seenSpotifyArtistIds.has(key)) return false;
+      seenSpotifyArtistIds.add(key);
+      return true;
+    });
 
     const enrichedPlaylists = await Promise.all(
       result.output.playlists.map(async (pl) => {
@@ -467,6 +492,24 @@ async function runRecommendationJob(
     const db = getDb();
     const completedAt = new Date();
     db.transaction((tx) => {
+      const [currentJob] = tx
+        .select({ status: recommendationJobs.status })
+        .from(recommendationJobs)
+        .where(eq(recommendationJobs.id, jobId))
+        .all();
+
+      // Idempotency guard: never insert duplicate rows if another worker already completed this job
+      if (currentJob?.status === "completed") {
+        return;
+      }
+
+      tx.delete(recommendedArtists)
+        .where(eq(recommendedArtists.jobId, jobId))
+        .run();
+      tx.delete(recommendedPlaylists)
+        .where(eq(recommendedPlaylists.jobId, jobId))
+        .run();
+
       if (enrichedArtists.length > 0) {
         tx.insert(recommendedArtists).values(enrichedArtists).run();
       }
@@ -560,19 +603,20 @@ export async function getRecommendationsState(userId: string) {
     .orderBy(desc(recommendationJobs.startedAt))
     .limit(1);
 
-  // Crash/restart recovery: if a job is marked running in SQLite but no worker is attached
+  // Crash/restart recovery: only re-attach if no worker is active AND heartbeat is stale
   if (
     latestJob &&
     (latestJob.status === "queued" || latestJob.status === "running") &&
     !activeRunners.has(latestJob.id)
   ) {
-    if (latestJob.geminiInteractionId) {
+    const idleMs = Date.now() - latestJob.updatedAt.getTime();
+    if (latestJob.geminiInteractionId && idleMs >= RECOVERY_HEARTBEAT_GAP_MS) {
       void runRecommendationJob(
         latestJob.id,
         userId,
         latestJob.geminiInteractionId,
       );
-    } else if (Date.now() - latestJob.updatedAt.getTime() >= STALE_JOB_MS) {
+    } else if (!latestJob.geminiInteractionId && idleMs >= STALE_JOB_MS) {
       await updateJob(latestJob.id, {
         status: "failed",
         stage: "Interrupted",

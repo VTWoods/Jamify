@@ -131,4 +131,12 @@ describe("Gemini recommendations helpers", () => {
     expect(parsed.artists[0].name).toBe("New Band");
     expect(parsed.playlists[0].tracks).toHaveLength(5);
   });
+
+  it("rejects empty or invalid JSON responses", () => {
+    expect(() => parseGeminiRecommendationsJson("")).toThrow();
+    expect(() => parseGeminiRecommendationsJson("not json")).toThrow();
+    expect(() =>
+      parseGeminiRecommendationsJson(JSON.stringify({ artists: [], playlists: [] })),
+    ).toThrow();
+  });
 });

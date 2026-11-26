@@ -22,9 +22,14 @@ export async function DELETE(
   }
 
   try {
-    await spotifyFetch(user.id, `/me/tracks?ids=${encodeURIComponent(trackId)}`, {
-      method: "DELETE",
-    });
+    const uri = `spotify:track:${trackId}`;
+    await spotifyFetch(
+      user.id,
+      `/me/library?uris=${encodeURIComponent(uri)}`,
+      {
+        method: "DELETE",
+      },
+    );
 
     const db = getDb();
     await db

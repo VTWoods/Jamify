@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Clock,
@@ -23,7 +25,12 @@ import type {
   SpotifyPlaylistItem,
 } from "@/types/jamify";
 
-type ActiveSection = "overview" | "history" | "liked" | "artists" | "playlists";
+export type SpotifySection =
+  | "overview"
+  | "history"
+  | "liked"
+  | "artists"
+  | "playlists";
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
@@ -39,26 +46,40 @@ function formatRelativeTime(iso: string | null): string {
 }
 
 export function SpotifyAssetsTab({
+  section = "overview",
+  playlistId = null,
   onAssetsUpdated,
 }: {
+  section?: SpotifySection;
+  playlistId?: string | null;
   onAssetsUpdated?: (snapshot: SpotifyAssetsSnapshot) => void;
 }) {
+  const router = useRouter();
   const [snapshot, setSnapshot] = useState<SpotifyAssetsSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [section, setSection] = useState<ActiveSection>("overview");
   const [query, setQuery] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  // Playlist detail drawer state
-  const [selectedPlaylist, setSelectedPlaylist] =
-    useState<SpotifyPlaylistItem | null>(null);
+  // Playlist detail state (driven by URL playlistId)
   const [playlistTracks, setPlaylistTracks] = useState<PlaylistTrackItem[]>([]);
+  const [playlistRestrictedReason, setPlaylistRestrictedReason] = useState<
+    string | null
+  >(null);
   const [loadingTracks, setLoadingTracks] = useState(false);
   const [editingPlaylist, setEditingPlaylist] = useState(false);
+  const [confirmRemovePlaylist, setConfirmRemovePlaylist] = useState(false);
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
+
+  const selectedPlaylist = useMemo(
+    () =>
+      playlistId
+        ? (snapshot?.playlists.find((p) => p.playlistId === playlistId) ?? null)
+        : null,
+    [snapshot?.playlists, playlistId],
+  );
 
   const loadAssets = useCallback(
     async (forceSync = false) => {
@@ -111,31 +132,67 @@ export function SpotifyAssetsTab({
     };
   }, [loadAssets]);
 
-  const openPlaylist = async (playlist: SpotifyPlaylistItem) => {
-    setSelectedPlaylist(playlist);
-    setEditName(playlist.name);
-    setEditDescription(playlist.description);
-    setEditingPlaylist(false);
+  // Load playlist tracks whenever the URL targets a specific playlistId
+  useEffect(() => {
+    if (!playlistId) {
+      setPlaylistTracks([]);
+      setPlaylistRestrictedReason(null);
+      setEditingPlaylist(false);
+      setConfirmRemovePlaylist(false);
+      return;
+    }
+
+    let cancelled = false;
     setLoadingTracks(true);
     setPlaylistTracks([]);
+    setPlaylistRestrictedReason(null);
+    setEditingPlaylist(false);
+    setConfirmRemovePlaylist(false);
+    setError(null);
 
-    try {
-      const res = await fetch(
-        `/api/spotify/playlists/${encodeURIComponent(playlist.playlistId)}/tracks`,
-      );
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "Failed to load tracks.");
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/spotify/playlists/${encodeURIComponent(playlistId)}/tracks`,
+        );
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) {
+          throw new Error(data.error ?? "Failed to load tracks.");
+        }
+        setPlaylistTracks(data.tracks ?? []);
+        if (data.restricted) {
+          setPlaylistRestrictedReason(
+            data.restrictionReason ??
+              "Spotify restricts reading tracks for playlists you don't own.",
+          );
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Failed to load playlist tracks.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingTracks(false);
+        }
       }
-      setPlaylistTracks(data.tracks ?? []);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load playlist tracks.",
-      );
-    } finally {
-      setLoadingTracks(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [playlistId]);
+
+  useEffect(() => {
+    if (selectedPlaylist) {
+      setEditName(selectedPlaylist.name);
+      setEditDescription(selectedPlaylist.description);
     }
-  };
+  }, [selectedPlaylist]);
 
   const handleUnlikeSong = async (trackId: string) => {
     setBusyId(trackId);
@@ -235,7 +292,6 @@ export function SpotifyAssetsTab({
         name: data.name,
         description: data.description,
       };
-      setSelectedPlaylist(updated);
       setEditingPlaylist(false);
       setSnapshot((prev) =>
         prev
@@ -250,6 +306,52 @@ export function SpotifyAssetsTab({
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to update playlist.",
+      );
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleRemovePlaylistFromProfile = async (
+    playlist: SpotifyPlaylistItem,
+  ) => {
+    setBusyId(playlist.playlistId);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/spotify/playlists/${encodeURIComponent(playlist.playlistId)}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(
+          data.error ?? "Failed to remove playlist from profile.",
+        );
+      }
+      setSnapshot((prev) =>
+        prev
+          ? {
+              ...prev,
+              summary: {
+                ...prev.summary,
+                playlistsTotal: Math.max(0, prev.summary.playlistsTotal - 1),
+                ownedPlaylistsCount: playlist.isOwnedByUser
+                  ? Math.max(0, prev.summary.ownedPlaylistsCount - 1)
+                  : prev.summary.ownedPlaylistsCount,
+              },
+              playlists: prev.playlists.filter(
+                (p) => p.playlistId !== playlist.playlistId,
+              ),
+            }
+          : prev,
+      );
+      setConfirmRemovePlaylist(false);
+      router.push("/spotify/playlists");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to remove playlist from profile.",
       );
     } finally {
       setBusyId(null);
@@ -274,9 +376,6 @@ export function SpotifyAssetsTab({
         throw new Error(data.error ?? "Failed to remove track.");
       }
       setPlaylistTracks((prev) => prev.filter((t) => t.uri !== uri));
-      setSelectedPlaylist((prev) =>
-        prev ? { ...prev, trackCount: Math.max(0, prev.trackCount - 1) } : prev,
-      );
       setSnapshot((prev) =>
         prev
           ? {
@@ -333,12 +432,14 @@ export function SpotifyAssetsTab({
 
   const filteredPlaylists = useMemo(
     () =>
-      (snapshot?.playlists ?? []).filter(
-        (p) =>
-          !q ||
-          p.name.toLowerCase().includes(q) ||
-          p.description.toLowerCase().includes(q),
-      ),
+      (snapshot?.playlists ?? [])
+        .filter(
+          (p) =>
+            !q ||
+            p.name.toLowerCase().includes(q) ||
+            p.description.toLowerCase().includes(q),
+        )
+        .sort((a, b) => Number(b.isOwnedByUser) - Number(a.isOwnedByUser)),
     [snapshot?.playlists, q],
   );
 
@@ -355,14 +456,13 @@ export function SpotifyAssetsTab({
   if (section === "playlists" && selectedPlaylist) {
     return (
       <div className="space-y-4">
-        <button
-          type="button"
-          onClick={() => setSelectedPlaylist(null)}
+        <Link
+          href="/spotify/playlists"
           className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-100"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Playlists
-        </button>
+        </Link>
 
         {error && (
           <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
@@ -453,6 +553,51 @@ export function SpotifyAssetsTab({
               </div>
             )}
           </div>
+
+          {!editingPlaylist && (
+            <div className="flex items-center justify-between gap-2 border-t border-zinc-800 pt-3">
+              {confirmRemovePlaylist ? (
+                <div className="flex w-full items-center justify-between gap-2">
+                  <span className="text-xs text-red-300">
+                    Remove from your Spotify profile?
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={busyId === selectedPlaylist.playlistId}
+                      onClick={() =>
+                        void handleRemovePlaylistFromProfile(selectedPlaylist)
+                      }
+                      className="inline-flex items-center gap-1 rounded-lg bg-red-500 px-3 py-1.5 text-xs font-semibold text-zinc-950 hover:bg-red-400 disabled:opacity-50"
+                    >
+                      {busyId === selectedPlaylist.playlistId ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5" />
+                      )}
+                      Remove
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmRemovePlaylist(false)}
+                      className="rounded-lg border border-zinc-700 px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmRemovePlaylist(true)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/20"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Remove from profile
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {loadingTracks ? (
@@ -503,10 +648,29 @@ export function SpotifyAssetsTab({
                 </div>
               </div>
             ))}
-            {playlistTracks.length === 0 && (
-              <p className="py-8 text-center text-xs text-zinc-500">
-                This playlist has no tracks yet.
-              </p>
+            {playlistRestrictedReason ? (
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5 text-center space-y-3">
+                <p className="text-xs leading-relaxed text-zinc-400">
+                  {playlistRestrictedReason}
+                </p>
+                {selectedPlaylist.spotifyUrl && (
+                  <a
+                    href={selectedPlaylist.spotifyUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-4 py-2 text-xs font-semibold text-zinc-950 hover:bg-emerald-400"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Open in Spotify
+                  </a>
+                )}
+              </div>
+            ) : (
+              playlistTracks.length === 0 && (
+                <p className="py-8 text-center text-xs text-zinc-500">
+                  This playlist has no tracks yet.
+                </p>
+              )
             )}
           </div>
         )}
@@ -516,7 +680,7 @@ export function SpotifyAssetsTab({
 
   // Section detail views (History, Liked Songs, Followed Artists, Playlists)
   if (section !== "overview") {
-    const titles: Record<Exclude<ActiveSection, "overview">, string> = {
+    const titles: Record<Exclude<SpotifySection, "overview">, string> = {
       history: "Listening History",
       liked: "Liked Songs",
       artists: "Followed Artists",
@@ -526,17 +690,13 @@ export function SpotifyAssetsTab({
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setSection("overview");
-              setQuery("");
-            }}
+          <Link
+            href="/spotify"
             className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-100"
           >
             <ArrowLeft className="h-4 w-4" />
             Dashboard
-          </button>
+          </Link>
           <h2 className="text-sm font-semibold text-zinc-100">
             {titles[section]}
           </h2>
@@ -561,6 +721,12 @@ export function SpotifyAssetsTab({
 
         {section === "history" && (
           <div className="space-y-2">
+            <p className="px-1 text-[11px] text-zinc-500">
+              Showing {filteredHistory.length} of{" "}
+              {snapshot?.summary.historyCount ?? 0} saved plays. Jamify saves
+              your full listening history in SQLite across hourly syncs
+              (Spotify returns up to 50 recent plays per fetch).
+            </p>
             {filteredHistory.map((item) => (
               <div
                 key={item.id}
@@ -698,10 +864,9 @@ export function SpotifyAssetsTab({
         {section === "playlists" && (
           <div className="space-y-2">
             {filteredPlaylists.map((playlist) => (
-              <button
+              <Link
                 key={playlist.id}
-                type="button"
-                onClick={() => void openPlaylist(playlist)}
+                href={`/spotify/playlists/${encodeURIComponent(playlist.playlistId)}`}
                 className="flex w-full items-center justify-between gap-3 rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-3.5 text-left transition hover:border-emerald-500/40 hover:bg-zinc-900"
               >
                 <div className="min-w-0 flex-1">
@@ -720,7 +885,7 @@ export function SpotifyAssetsTab({
                   </p>
                 </div>
                 <ListMusic className="h-4 w-4 shrink-0 text-zinc-500" />
-              </button>
+              </Link>
             ))}
             {filteredPlaylists.length === 0 && (
               <p className="py-8 text-center text-xs text-zinc-500">
@@ -768,9 +933,8 @@ export function SpotifyAssetsTab({
       )}
 
       <div className="grid grid-cols-2 gap-3">
-        <button
-          type="button"
-          onClick={() => setSection("history")}
+        <Link
+          href="/spotify/history"
           className="flex flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 text-left transition active:scale-[0.98] hover:border-emerald-500/40"
         >
           <div className="flex items-center justify-between">
@@ -791,11 +955,10 @@ export function SpotifyAssetsTab({
                 : "Tap to view recent plays"}
             </p>
           </div>
-        </button>
+        </Link>
 
-        <button
-          type="button"
-          onClick={() => setSection("liked")}
+        <Link
+          href="/spotify/liked"
           className="flex flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 text-left transition active:scale-[0.98] hover:border-emerald-500/40"
         >
           <div className="flex items-center justify-between">
@@ -814,11 +977,10 @@ export function SpotifyAssetsTab({
                 : "Tap to manage saved tracks"}
             </p>
           </div>
-        </button>
+        </Link>
 
-        <button
-          type="button"
-          onClick={() => setSection("artists")}
+        <Link
+          href="/spotify/artists"
           className="flex flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 text-left transition active:scale-[0.98] hover:border-emerald-500/40"
         >
           <div className="flex items-center justify-between">
@@ -839,11 +1001,10 @@ export function SpotifyAssetsTab({
                 : "Tap to manage artists"}
             </p>
           </div>
-        </button>
+        </Link>
 
-        <button
-          type="button"
-          onClick={() => setSection("playlists")}
+        <Link
+          href="/spotify/playlists"
           className="flex flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 text-left transition active:scale-[0.98] hover:border-emerald-500/40"
         >
           <div className="flex items-center justify-between">
@@ -862,7 +1023,7 @@ export function SpotifyAssetsTab({
               {summary?.ownedPlaylistsCount ?? 0} owned by you
             </p>
           </div>
-        </button>
+        </Link>
       </div>
 
       {summary && summary.topGenres.length > 0 && (

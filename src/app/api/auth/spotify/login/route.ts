@@ -1,21 +1,22 @@
 import crypto from "node:crypto";
 import { cookies } from "next/headers";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import {
-  getAppBaseUrl,
+  getRequestOrigin,
   getSpotifyRedirectUri,
-  isSecureCookie,
+  isOriginSecure,
   OAUTH_STATE_COOKIE_NAME,
   SPOTIFY_SCOPES,
 } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const origin = getRequestOrigin(request);
   const clientId = process.env.SPOTIFY_CLIENT_ID;
   if (!clientId) {
     return NextResponse.redirect(
-      `${getAppBaseUrl()}/?authError=${encodeURIComponent("SPOTIFY_CLIENT_ID is not configured on the server.")}`,
+      `${origin}/?authError=${encodeURIComponent("SPOTIFY_CLIENT_ID is not configured on the server.")}`,
     );
   }
 
@@ -23,7 +24,7 @@ export async function GET() {
   const cookieStore = await cookies();
   cookieStore.set(OAUTH_STATE_COOKIE_NAME, state, {
     httpOnly: true,
-    secure: isSecureCookie(),
+    secure: isOriginSecure(origin),
     sameSite: "lax",
     path: "/",
     maxAge: 60 * 10,
@@ -33,7 +34,7 @@ export async function GET() {
     response_type: "code",
     client_id: clientId,
     scope: SPOTIFY_SCOPES,
-    redirect_uri: getSpotifyRedirectUri(),
+    redirect_uri: getSpotifyRedirectUri(origin),
     state,
     show_dialog: "false",
   });

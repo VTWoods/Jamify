@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   spotifyFollowedArtists,
@@ -15,6 +15,7 @@ import {
 } from "@/lib/spotify";
 
 export const SPOTIFY_SYNC_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+export const LISTENING_HISTORY_DISPLAY_LIMIT = 1000;
 
 const inFlightSyncs = new Map<string, Promise<void>>();
 
@@ -60,6 +61,7 @@ interface PlaylistsResponse {
     public?: boolean | null;
     snapshot_id?: string | null;
     owner?: { id?: string; display_name?: string | null };
+    items?: { total?: number };
     tracks?: { total?: number };
     images?: SpotifyImage[];
     external_urls?: { spotify?: string };
@@ -187,7 +189,7 @@ async function performSpotifySync(userId: string): Promise<void> {
           ownerName: pl.owner?.display_name ?? ownerId ?? "Spotify",
           isOwnedByUser: ownerId === userId,
           isPublic: Boolean(pl.public),
-          trackCount: pl.tracks?.total ?? 0,
+          trackCount: pl.items?.total ?? pl.tracks?.total ?? 0,
           imageUrl: pl.images?.[0]?.url ?? null,
           spotifyUrl: pl.external_urls?.spotify ?? null,
           snapshotId: pl.snapshot_id ?? null,
@@ -197,18 +199,23 @@ async function performSpotifySync(userId: string): Promise<void> {
       playlistPages += 1;
     }
 
-    // Replace user's cached assets in a single SQLite transaction
+    // Replace playlists/liked/artists and accumulate full listening history in SQLite
     const syncedAt = new Date();
     db.transaction((tx) => {
-      tx.delete(spotifyListeningHistory)
-        .where(eq(spotifyListeningHistory.userId, userId))
-        .run();
+      // Accumulate listening history indefinitely across hourly syncs (Spotify caps each fetch at 50)
       if (historyRows.length > 0) {
         tx.insert(spotifyListeningHistory)
           .values(historyRows)
           .onConflictDoNothing()
           .run();
       }
+
+      const [historyCountRow] = tx
+        .select({ count: sql<number>`count(*)` })
+        .from(spotifyListeningHistory)
+        .where(eq(spotifyListeningHistory.userId, userId))
+        .all();
+      const accumulatedHistoryTotal = Number(historyCountRow?.count ?? 0);
 
       tx.delete(spotifyLikedSongs)
         .where(eq(spotifyLikedSongs.userId, userId))
@@ -249,7 +256,7 @@ async function performSpotifySync(userId: string): Promise<void> {
           likedSongsTotal: likedTotal || likedRows.length,
           followedArtistsTotal: artistsTotal || artistRows.length,
           playlistsTotal: playlistsTotal || playlistRows.length,
-          historyTotal: historyRows.length,
+          historyTotal: accumulatedHistoryTotal,
           updatedAt: syncedAt,
         })
         .onConflictDoUpdate({
@@ -261,7 +268,7 @@ async function performSpotifySync(userId: string): Promise<void> {
             likedSongsTotal: likedTotal || likedRows.length,
             followedArtistsTotal: artistsTotal || artistRows.length,
             playlistsTotal: playlistsTotal || playlistRows.length,
-            historyTotal: historyRows.length,
+            historyTotal: accumulatedHistoryTotal,
             updatedAt: syncedAt,
           },
         })
@@ -323,7 +330,8 @@ export async function getSpotifyAssetsSnapshot(userId: string) {
         .select()
         .from(spotifyListeningHistory)
         .where(eq(spotifyListeningHistory.userId, userId))
-        .orderBy(desc(spotifyListeningHistory.playedAt)),
+        .orderBy(desc(spotifyListeningHistory.playedAt))
+        .limit(LISTENING_HISTORY_DISPLAY_LIMIT),
       db
         .select()
         .from(spotifyLikedSongs)

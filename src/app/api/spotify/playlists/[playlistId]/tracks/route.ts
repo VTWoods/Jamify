@@ -12,10 +12,11 @@ import {
 
 export const dynamic = "force-dynamic";
 
-interface PlaylistTracksResponse {
+interface PlaylistItemsResponse {
   items: Array<{
     added_at: string;
-    track: SpotifyTrackItem | null;
+    item?: SpotifyTrackItem | null;
+    track?: SpotifyTrackItem | null;
   }>;
   total: number;
 }
@@ -31,28 +32,45 @@ export async function GET(
 
   const { playlistId } = await context.params;
   try {
-    const res = await spotifyFetch<PlaylistTracksResponse>(
+    const res = await spotifyFetch<PlaylistItemsResponse>(
       user.id,
-      `/playlists/${encodeURIComponent(playlistId)}/tracks?limit=100`,
+      `/playlists/${encodeURIComponent(playlistId)}/items?limit=100`,
     );
 
     const tracks = (res.items ?? [])
-      .filter((item): item is { added_at: string; track: SpotifyTrackItem } =>
-        Boolean(item.track?.id),
+      .map((entry) => ({
+        addedAt: entry.added_at,
+        track: entry.item ?? entry.track ?? null,
+      }))
+      .filter((entry): entry is { addedAt: string; track: SpotifyTrackItem } =>
+        Boolean(entry.track?.id && entry.track?.uri),
       )
-      .map((item) => ({
-        id: item.track.id,
-        uri: item.track.uri,
-        name: item.track.name,
-        artistNames: item.track.artists.map((a) => a.name).join(", "),
-        albumName: item.track.album?.name ?? "",
-        albumImageUrl: item.track.album?.images?.[0]?.url ?? null,
-        spotifyUrl: item.track.external_urls?.spotify ?? null,
-        addedAt: item.added_at,
+      .map((entry) => ({
+        id: entry.track.id,
+        uri: entry.track.uri,
+        name: entry.track.name,
+        artistNames: (entry.track.artists ?? []).map((a) => a.name).join(", "),
+        albumName: entry.track.album?.name ?? "",
+        albumImageUrl: entry.track.album?.images?.[0]?.url ?? null,
+        spotifyUrl: entry.track.external_urls?.spotify ?? null,
+        addedAt: entry.addedAt,
       }));
 
-    return NextResponse.json({ total: res.total ?? tracks.length, tracks });
+    return NextResponse.json({
+      total: res.total ?? tracks.length,
+      tracks,
+      restricted: false,
+    });
   } catch (err) {
+    if (err instanceof SpotifyApiError && err.status === 403) {
+      return NextResponse.json({
+        total: 0,
+        tracks: [],
+        restricted: true,
+        restrictionReason:
+          "Spotify Development Mode restricts reading tracks for playlists you don't own. Open this playlist in Spotify to view its tracks.",
+      });
+    }
     const status = err instanceof SpotifyApiError ? err.status : 500;
     const message =
       err instanceof Error ? err.message : "Failed to load playlist tracks.";
@@ -78,10 +96,10 @@ export async function DELETE(
     const body = removeTrackSchema.parse(await request.json());
     await spotifyFetch(
       user.id,
-      `/playlists/${encodeURIComponent(playlistId)}/tracks`,
+      `/playlists/${encodeURIComponent(playlistId)}/items`,
       {
         method: "DELETE",
-        body: JSON.stringify({ tracks: [{ uri: body.uri }] }),
+        body: JSON.stringify({ items: [{ uri: body.uri }] }),
       },
     );
 

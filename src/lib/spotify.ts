@@ -135,8 +135,18 @@ export async function spotifyFetch<T>(
 
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
+    let parsedMessage = "";
+    try {
+      const json = JSON.parse(detail) as { error?: { message?: string } };
+      parsedMessage = json.error?.message ?? "";
+    } catch {
+      parsedMessage = detail.slice(0, 200);
+    }
+    console.error(`Spotify API ${res.status} on ${url}:`, detail);
     throw new SpotifyApiError(
-      `Spotify API error (${res.status})`,
+      parsedMessage
+        ? `Spotify API error (${res.status}): ${parsedMessage}`
+        : `Spotify API error (${res.status})`,
       res.status,
       detail,
     );
@@ -254,7 +264,7 @@ export async function createSpotifyPlaylistWithTracks(
   const created = await spotifyFetch<{
     id: string;
     external_urls?: { spotify?: string };
-  }>(userId, `/users/${encodeURIComponent(userId)}/playlists`, {
+  }>(userId, "/me/playlists", {
     method: "POST",
     body: JSON.stringify({
       name: input.name,
@@ -267,7 +277,7 @@ export async function createSpotifyPlaylistWithTracks(
   for (let i = 0; i < input.trackUris.length; i += 100) {
     const chunk = input.trackUris.slice(i, i + 100);
     if (chunk.length > 0) {
-      await spotifyFetch(userId, `/playlists/${created.id}/tracks`, {
+      await spotifyFetch(userId, `/playlists/${created.id}/items`, {
         method: "POST",
         body: JSON.stringify({ uris: chunk }),
       });

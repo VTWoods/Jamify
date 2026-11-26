@@ -3,8 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/db";
 import { spotifyTokens, users } from "@/db/schema";
 import {
-  getAppBaseUrl,
+  getRequestOrigin,
   getSpotifyRedirectUri,
+  isOriginSecure,
   isSpotifyUserAllowed,
   OAUTH_STATE_COOKIE_NAME,
   setSessionCookie,
@@ -28,7 +29,7 @@ interface SpotifyMeResponse {
 }
 
 export async function GET(request: NextRequest) {
-  const baseUrl = getAppBaseUrl();
+  const baseUrl = getRequestOrigin(request);
   const { searchParams } = new URL(request.url);
   const error = searchParams.get("error");
   const code = searchParams.get("code");
@@ -71,7 +72,7 @@ export async function GET(request: NextRequest) {
       body: new URLSearchParams({
         grant_type: "authorization_code",
         code,
-        redirect_uri: getSpotifyRedirectUri(),
+        redirect_uri: getSpotifyRedirectUri(baseUrl),
       }),
     });
 
@@ -152,7 +153,7 @@ export async function GET(request: NextRequest) {
         },
       });
 
-    await setSessionCookie(profile.id);
+    await setSessionCookie(profile.id, isOriginSecure(baseUrl));
     return NextResponse.redirect(`${baseUrl}/`);
   } catch (err) {
     console.error("Spotify callback error:", err);

@@ -26,12 +26,38 @@ export function getAppBaseUrl(): string {
   return (process.env.APP_URL ?? "http://127.0.0.1:3000").replace(/\/+$/, "");
 }
 
-export function isSecureCookie(): boolean {
-  return getAppBaseUrl().startsWith("https://");
+export function getRequestOrigin(request: Request): string {
+  const forwardedHost = request.headers
+    .get("x-forwarded-host")
+    ?.split(",")[0]
+    ?.trim();
+  const forwardedProto = request.headers
+    .get("x-forwarded-proto")
+    ?.split(",")[0]
+    ?.trim();
+
+  if (forwardedHost) {
+    const proto = forwardedProto || "https";
+    return `${proto}://${forwardedHost}`.replace(/\/+$/, "");
+  }
+
+  const host = request.headers.get("host")?.trim();
+  if (host) {
+    const urlProto = new URL(request.url).protocol.replace(/:$/, "");
+    const proto = forwardedProto || urlProto || "http";
+    return `${proto}://${host}`.replace(/\/+$/, "");
+  }
+
+  return getAppBaseUrl();
 }
 
-export function getSpotifyRedirectUri(): string {
-  return `${getAppBaseUrl()}/api/auth/spotify/callback`;
+export function isOriginSecure(origin: string): boolean {
+  return origin.startsWith("https://");
+}
+
+export function getSpotifyRedirectUri(origin?: string): string {
+  const base = (origin ?? getAppBaseUrl()).replace(/\/+$/, "");
+  return `${base}/api/auth/spotify/callback`;
 }
 
 export function isSpotifyUserAllowed(spotifyUserId: string): boolean {
@@ -46,7 +72,10 @@ export interface SessionUser {
   avatarUrl: string | null;
 }
 
-export async function setSessionCookie(userId: string): Promise<void> {
+export async function setSessionCookie(
+  userId: string,
+  secure?: boolean,
+): Promise<void> {
   const token = signSessionToken({
     userId,
     exp: Date.now() + SESSION_TTL_MS,
@@ -54,7 +83,7 @@ export async function setSessionCookie(userId: string): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: isSecureCookie(),
+    secure: secure ?? isOriginSecure(getAppBaseUrl()),
     sameSite: "lax",
     path: "/",
     maxAge: Math.floor(SESSION_TTL_MS / 1000),

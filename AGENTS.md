@@ -25,8 +25,8 @@ Keep updates concise and factual—document what actually exists in the repo, no
 
 ## Features Implemented
 
-1. **Spotify OAuth 2.0 & Session Auth:** Server-side Authorization Code flow (`/api/auth/spotify/login`, `/api/auth/spotify/callback`, `/api/auth/logout`, `/api/auth/me`) with AES-256-GCM encrypted access/refresh tokens in SQLite, HMAC-SHA256 signed `HttpOnly` session cookies, automatic token refresh, and optional `ALLOWED_SPOTIFY_USER_IDS` allowlist.
-2. **Spotify Assets Tab (`SpotifyAssetsTab`):** Mobile dashboard summarizing Listening History, Liked Songs, Followed Artists, and Personal Playlists cached in SQLite. Automatically refreshes from Spotify every hour (plus manual "Sync now" and visibility-based staleness check). Tapping any summary card opens a filterable management view to unlike songs, unfollow artists, inspect playlist tracks, edit owned playlist names/descriptions, and remove tracks from owned playlists.
+1. **Spotify OAuth 2.0 & Session Auth:** Server-side Authorization Code flow (`/api/auth/spotify/login`, `/api/auth/spotify/callback`, `/api/auth/logout`, `/api/auth/me`) with dynamic request-origin redirect URI matching (`x-forwarded-proto`/`x-forwarded-host` for Caddy or client `Host` header, falling back to `APP_URL`), AES-256-GCM encrypted access/refresh tokens in SQLite, HMAC-SHA256 signed `HttpOnly` session cookies, automatic token refresh, and optional `ALLOWED_SPOTIFY_USER_IDS` allowlist.
+2. **Spotify Assets Tab (`SpotifyAssetsTab`):** Mobile dashboard summarizing Listening History (accumulates full play history indefinitely in SQLite across hourly syncs, displaying up to the newest 1,000 plays in the UI, since Spotify's recently-played API returns 50 per fetch), Liked Songs, Followed Artists, and Personal Playlists cached in SQLite. Automatically refreshes from Spotify every hour (plus manual "Sync now" and visibility-based staleness check). Tapping any summary card opens a filterable management view to unlike songs, unfollow artists, inspect playlist tracks, edit owned playlist names/descriptions, remove tracks from owned playlists, and remove/unfollow playlists from the user's Spotify profile.
 3. **Gemini Recommendations Tab (`GeminiRecommendationsTab`):** Uses the synced Spotify library as context to recommend unheard artists (strictly excluding known artists) and curated custom playlists ready for one-tap **Follow** or **Add to Spotify**. Runs reliably as a SQLite-persisted background job kicked off by the **Refresh** button: defaults to `gemini-4-hydrogen` via the `@google/genai` Interactions API (`background: true`) with crash/restart recovery via persisted `geminiInteractionId`, and automatically falls back to `gemini-3.5-flash` on token/quota limits or API errors.
 
 ## Repository Structure
@@ -65,6 +65,8 @@ Keep updates concise and factual—document what actually exists in the repo, no
 │   │   │   ├── health/route.ts      # GET /api/health (verifies SQLite connectivity)
 │   │   │   ├── recommendations/     # GET state, POST refresh, POST playlists/[id]/add
 │   │   │   └── spotify/             # Assets sync/fetch, liked-songs, followed-artists, playlists
+│   │   ├── gemini/                  # /gemini & /gemini/[view] (artists | playlists)
+│   │   ├── spotify/                 # /spotify, /spotify/[section], /spotify/playlists/[playlistId]
 │   │   ├── globals.css              # Tailwind v4 global styles (dark mode default)
 │   │   ├── layout.tsx               # Mobile-first root layout, PWA metadata, SW registration
 │   │   ├── manifest.ts              # Next.js Web App Manifest route
@@ -129,14 +131,19 @@ All secrets are **server-side only** (never prefix secrets with `NEXT_PUBLIC_`).
 ## Conventions & Architecture
 
 - **Server-only secrets & API calls:** All Gemini and Spotify API requests must execute in server-side Route Handlers (`src/app/api/**`) or Server Actions. Never expose API keys or OAuth tokens to the browser.
+- **Spotify Web API (2026 spec):** Use `/v1/playlists/{id}/items` (reading `entry.item ?? entry.track` and deleting with `{ items: [{ uri }] }`), `/v1/me/playlists` for creating playlists, and `/v1/me/library?uris=...` (`PUT`/`DELETE`) for saving/removing tracks and following/unfollowing artists. Do not use deprecated `/playlists/{id}/tracks`, `/users/{id}/playlists`, or `DELETE /me/tracks` / `PUT|DELETE /me/following` endpoints.
 - **Gemini model policy:** Default to `gemini-4-hydrogen` via the `@google/genai` Interactions API (`background: true`), with automatic fallback to `gemini-3.5-flash` on quota/token errors or execution failures. Never use deprecated `gemini-2.5-*`, `gemini-2.0-*`, or `gemini-1.5-*` models.
 - **Reliable background jobs:** Long-running Gemini tasks must persist job state and `geminiInteractionId` in SQLite (`recommendation_jobs`) so client polls and container restarts recover cleanly without HTTP timeouts.
 - **PWA caching invariant:** `public/sw.js` must never cache `/api/*` routes or non-GET requests.
 - **SQLite & Docker:** Keep `better-sqlite3` in `serverExternalPackages` in `next.config.ts`. Any schema change in `src/db/schema.ts` must be paired with `npm run db:generate` so `scripts/migrate.mjs` applies it automatically on container startup.
 - **Public repository hygiene:** Never commit personal domains, emails, IP addresses, Spotify IDs, `.env` files, or `.db` files. Use generic placeholders (`jamify.example.com`, `your_*`) in all examples and docs.
 
-## Git Workflow
+## Git Workflow & Mandatory Pre-Commit Privacy Audit
 
 - Default branch is `main`.
 - Write clear, concise commit messages describing what changed and why.
+- **Mandatory Pre-Commit Privacy & Secret Audit (Required before EVERY commit and push):**
+  1. Inspect `git status` and `git diff --cached` to confirm no `.env`, `.env.*` (except `.env.example`), `data/`, `*.db`, `*.db-wal`, `*.db-shm`, or local log/debug files are staged.
+  2. Scan all tracked and newly added files for leaked secrets or personal information: API keys (`AIza*`, `sk-*`, `ghp_*`, OAuth client IDs/secrets, bearer/Cloudflare tokens), personal domains, email addresses, private LAN IPs, real Spotify user/playlist IDs, or host-specific paths.
+  3. Replace any real values with generic placeholders (`jamify.example.com`, `your_*`) before committing. Never push if any secret or personal data is found.
 - Before committing, run `npm run typecheck`, `npm run lint`, `npm test`, and `npm run build`, and confirm `AGENTS.md` reflects any structural or feature changes.

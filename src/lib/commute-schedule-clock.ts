@@ -124,3 +124,18 @@ export function shouldRunDailyRotation(
   if (clock.hour < 1) return false;
   return lastAppliedDateKey !== clock.dateKey;
 }
+
+/**
+ * Runs once every Sunday at or after 1:00 AM local time once the week's
+ * discovery edition has been generated.
+ */
+export function shouldRunWeeklyDiscoverySync(
+  clock: LocalClockParts,
+  lastGeneratedWeekKey: string | null | undefined,
+  lastAppliedDateKey: string | null | undefined,
+): boolean {
+  if (clock.weekday !== 0) return false;
+  if (clock.hour < 1) return false;
+  if (lastGeneratedWeekKey !== clock.sundayWeekKey) return false;
+  return lastAppliedDateKey !== clock.sundayWeekKey;
+}

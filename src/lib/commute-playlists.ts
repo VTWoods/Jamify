@@ -28,7 +28,7 @@ import {
   syncSpotifyAssets,
 } from "@/lib/spotify-sync";
 
-export type CommuteKind = "morning" | "evening";
+export type CommuteKind = "morning" | "evening" | "discovery";
 
 const JOB_POLL_INTERVAL_MS = 3_000;
 const JOB_MAX_WAIT_MS = 5 * 60 * 1000; // 5 minutes
@@ -66,9 +66,23 @@ const dayEditionSchema = z.object({
     .max(25),
 });
 
+const discoveryEditionSchema = z.object({
+  theme: z.string().min(1),
+  tracks: z
+    .array(
+      z.object({
+        title: z.string().min(1),
+        artist: z.string().min(1),
+      }),
+    )
+    .min(10)
+    .max(25),
+});
+
 export const commuteWeekOutputSchema = z.object({
   morning: z.array(dayEditionSchema).length(5),
   evening: z.array(dayEditionSchema).length(5),
+  discovery: discoveryEditionSchema,
 });
 
 export type CommuteWeekOutput = z.infer<typeof commuteWeekOutputSchema>;
@@ -115,20 +129,46 @@ const COMMUTE_WEEK_JSON_SCHEMA = {
         "5 distinct chill, relaxing evening commute home playlists (weekday 1 through 5), ~1 hour each",
       items: DAY_EDITION_JSON_SCHEMA,
     },
+    discovery: {
+      type: "object",
+      description:
+        "1 weekly discovery playlist (~18 new/fresh songs, ~1 hour) strictly from artists the user does NOT follow, similar to their followed artists",
+      properties: {
+        theme: {
+          type: "string",
+          description: "Short catchy subtitle for this week's discovery mix",
+        },
+        tracks: {
+          type: "array",
+          description:
+            "18 real, newer/fresh songs by artists NOT in the user's followed artists list",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              artist: { type: "string" },
+            },
+            required: ["title", "artist"],
+          },
+        },
+      },
+      required: ["theme", "tracks"],
+    },
   },
-  required: ["morning", "evening"],
+  required: ["morning", "evening", "discovery"],
 };
 
 const COMMUTE_SYSTEM_INSTRUCTION = `You are Jamify, an expert Spotify playlist curator.
-Your job is to create 5 distinct weekday editions (Monday=1 through Friday=5) for TWO constant commute playlists:
-1. "morning": Upbeat, higher-tempo, energizing music for the commute to work (~60 minutes per day, ~18 real songs each).
-2. "evening": Chill, relaxing, mellow music for the commute home (~60 minutes per day, ~18 real songs each).
+Your job is to generate weekly preset playlists in one structured JSON response:
+1. "morning": 5 distinct weekday editions (Monday=1 through Friday=5) of upbeat, higher-tempo, energizing music (~60 minutes / ~18 real songs each) strictly from the user's Followed Artists.
+2. "evening": 5 distinct weekday editions (Monday=1 through Friday=5) of chill, relaxing, mellow music (~60 minutes / ~18 real songs each) strictly from the user's Followed Artists.
+3. "discovery": 1 weekly discovery playlist (~60 minutes / ~18 real songs) featuring newer, fresh songs from artists the user does NOT follow (strictly exclude EVERY artist in their Followed Artists list) who sound similar to or complement their followed artists.
 
 STRICT RULES:
-- Every single song MUST be by one of the artists in the user's Followed Artists list provided below.
-- Do NOT repeat the same song across different weekdays of the same week.
-- Use real, verifiable song titles and exact artist names from the followed artists list.
-- Return strictly valid JSON matching the schema with weekday values 1, 2, 3, 4, 5 in both "morning" and "evening".`;
+- For "morning" and "evening", every single song MUST be by an artist in the user's Followed Artists list, with no repeated songs across the 5 weekdays.
+- For "discovery", every single song MUST be by an artist NOT in the user's Followed Artists list (prioritize newer releases and fresh music discovery).
+- Use real, verifiable song titles and artist names.
+- Return strictly valid JSON matching the schema.`;
 
 export function buildCommutePrompt(
   followedArtists: Array<{ name: string; genres: string[] }>,
@@ -141,14 +181,15 @@ export function buildCommutePrompt(
     )
     .join("\n");
 
-  return `Create 5 weekday playlists (Monday=1, Tuesday=2, Wednesday=3, Thursday=4, Friday=5) for BOTH:
-1. Morning Commute (upbeat, higher tempo, energizing — ~1 hour / ~18 tracks per day)
-2. Evening Commute (chill, relaxing, winding down — ~1 hour / ~18 tracks per day)
+  return `Create this week's preset playlists:
+1. Morning Commute: 5 weekday playlists (Monday=1..Friday=5), upbeat & higher tempo, ~1 hour / ~18 tracks each — STRICTLY from the Followed Artists below.
+2. Evening Commute: 5 weekday playlists (Monday=1..Friday=5), chill & relaxing, ~1 hour / ~18 tracks each — STRICTLY from the Followed Artists below.
+3. Weekly Discovery: 1 playlist of ~18 newer/fresh songs (~1 hour) from artists I do NOT follow (EXCLUDE every artist below) that are similar to my Followed Artists to help me discover new music.
 
-Compose EVERY track strictly from these Followed Artists:
+My Followed Artists:
 ${artistLines}
 
-Ensure each weekday feels fresh and distinct with minimal or zero track overlap across the 5 days.`;
+Ensure each weekday commute playlist feels fresh and distinct with minimal or zero track overlap across the 5 days, and ensure Weekly Discovery contains ONLY unfollowed artists.`;
 }
 
 export function parseCommuteWeekJson(
@@ -205,6 +246,7 @@ export async function ensureCommuteConfigs(userId: string) {
 
   const hasMorning = existing.some((c) => c.kind === "morning");
   const hasEvening = existing.some((c) => c.kind === "evening");
+  const hasDiscovery = existing.some((c) => c.kind === "discovery");
   const now = new Date();
 
   if (!hasMorning) {
@@ -234,6 +276,23 @@ export async function ensureCommuteConfigs(userId: string) {
         name: "Evening Commute",
         description:
           "Chill, relaxing tracks from artists you follow — rotated automatically each weekday at 1 AM by Jamify.",
+        targetMinutes: 60,
+        enabled: true,
+        updatedAt: now,
+      })
+      .onConflictDoNothing();
+  }
+
+  if (!hasDiscovery) {
+    await db
+      .insert(commuteConfigs)
+      .values({
+        id: `${userId}:discovery`,
+        userId,
+        kind: "discovery",
+        name: "Weekly Discovery",
+        description:
+          "Fresh songs from artists you don't follow yet, matched to your taste — refreshed weekly on Sundays at 1 AM by Jamify.",
         targetMinutes: 60,
         enabled: true,
         updatedAt: now,
@@ -284,7 +343,21 @@ async function pollCommuteInteraction(
       interaction.status === "failed" ||
       interaction.status === "cancelled"
     ) {
-      throw new Error(`Gemini interaction ${interaction.status}`);
+      const errorDetails = (
+        interaction as {
+          errors?: Array<{ code?: string; message?: string }>;
+        }
+      ).errors;
+      const summary = errorDetails?.length
+        ? errorDetails
+            .map((e) => [e.code, e.message].filter(Boolean).join(": "))
+            .join("; ")
+        : "";
+      throw new Error(
+        summary
+          ? `Gemini interaction ${interaction.status} (${summary})`
+          : `Gemini interaction ${interaction.status}`,
+      );
     }
     await updateCommuteJob(jobId, {
       stage: `Waiting for ${PRIMARY_GEMINI_MODEL} (${interaction.status})`,
@@ -292,6 +365,40 @@ async function pollCommuteInteraction(
     await new Promise((resolve) => setTimeout(resolve, JOB_POLL_INTERVAL_MS));
   }
   throw new Error(`Timed out waiting for ${PRIMARY_GEMINI_MODEL}.`);
+}
+
+function isTransient503Error(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const status =
+    (err as { status?: number; statusCode?: number }).status ??
+    (err as { statusCode?: number }).statusCode;
+  if (status === 503) return true;
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.includes("503") || msg.toLowerCase().includes("high demand");
+}
+
+async function createCommuteFallbackWithRetry<T>(
+  jobId: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const delaysMs = [4_000, 8_000, 15_000];
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= delaysMs.length; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (!isTransient503Error(err) || attempt === delaysMs.length) {
+        throw err;
+      }
+      const waitSec = Math.round(delaysMs[attempt] / 1000);
+      await updateCommuteJob(jobId, {
+        stage: `${FALLBACK_GEMINI_MODEL} busy (503) — retrying in ${waitSec}s (${attempt + 1}/${delaysMs.length})`,
+      });
+      await new Promise((resolve) => setTimeout(resolve, delaysMs[attempt]));
+    }
+  }
+  throw lastErr;
 }
 
 async function runCommuteGeminiWithFallback(
@@ -360,12 +467,16 @@ async function runCommuteGeminiWithFallback(
       stage: `Falling back to ${FALLBACK_GEMINI_MODEL}`,
     });
 
-    const fallbackInteraction = await client.interactions.create({
-      model: FALLBACK_GEMINI_MODEL,
-      input: prompt,
-      system_instruction: COMMUTE_SYSTEM_INSTRUCTION,
-      response_format: responseFormat,
-    });
+    const fallbackInteraction = await createCommuteFallbackWithRetry(
+      jobId,
+      () =>
+        client.interactions.create({
+          model: FALLBACK_GEMINI_MODEL,
+          input: prompt,
+          system_instruction: COMMUTE_SYSTEM_INSTRUCTION,
+          response_format: responseFormat,
+        }),
+    );
 
     const output = parseCommuteWeekJson(fallbackInteraction.output_text);
     return {
@@ -381,13 +492,30 @@ async function resolveCommuteEditionTracks(
   userId: string,
   tracks: Array<{ title: string; artist: string }>,
   targetMinutes: number,
+  excludeArtistsNormalized?: Set<string>,
 ): Promise<{ tracks: CommuteTrackItem[]; totalDurationMs: number }> {
   const seenUris = new Set<string>();
   const resolved: CommuteTrackItem[] = [];
 
   for (const track of tracks) {
+    if (
+      excludeArtistsNormalized &&
+      excludeArtistsNormalized.has(track.artist.trim().toLowerCase())
+    ) {
+      continue;
+    }
     const match = await searchSpotifyTrack(userId, track.title, track.artist);
     if (!match?.uri || seenUris.has(match.uri)) continue;
+
+    if (
+      excludeArtistsNormalized &&
+      match.artists.some((a) =>
+        excludeArtistsNormalized.has(a.name.trim().toLowerCase()),
+      )
+    ) {
+      continue;
+    }
+
     seenUris.add(match.uri);
     resolved.push({
       title: match.name,
@@ -440,6 +568,11 @@ async function runCommuteGenerationJob(
       configs.find((c) => c.kind === "morning")?.targetMinutes ?? 60;
     const eveningTarget =
       configs.find((c) => c.kind === "evening")?.targetMinutes ?? 60;
+    const discoveryTarget =
+      configs.find((c) => c.kind === "discovery")?.targetMinutes ?? 60;
+    const followedNamesNormalized = new Set(
+      snapshot.followedArtists.map((a) => a.name.trim().toLowerCase()),
+    );
 
     await updateCommuteJob(jobId, {
       stage: "Matching morning commute tracks in Spotify (5 days)",
@@ -491,6 +624,29 @@ async function runCommuteGenerationJob(
         createdAt: now,
       });
     }
+
+    await updateCommuteJob(jobId, {
+      stage: "Matching weekly discovery tracks in Spotify",
+    });
+
+    const discoveryResolved = await resolveCommuteEditionTracks(
+      userId,
+      result.output.discovery.tracks,
+      discoveryTarget,
+      followedNamesNormalized,
+    );
+    editionRows.push({
+      id: `${userId}:${weekKey}:discovery:0`,
+      jobId,
+      userId,
+      weekKey,
+      kind: "discovery",
+      weekday: 0,
+      theme: result.output.discovery.theme,
+      tracksJson: JSON.stringify(discoveryResolved.tracks),
+      totalDurationMs: discoveryResolved.totalDurationMs,
+      createdAt: now,
+    });
 
     const completedAt = new Date();
     db.transaction((tx) => {
@@ -645,6 +801,8 @@ export async function applyCommuteDayToSpotify(
     const config = configs.find((c) => c.kind === kind);
     if (!config) continue;
 
+    const editionWeekday = kind === "discovery" ? 0 : targetWeekday;
+
     // Load the latest week's edition for this kind + weekday from SQLite
     const [edition] = await db
       .select()
@@ -653,7 +811,7 @@ export async function applyCommuteDayToSpotify(
         and(
           eq(commuteDailyEditions.userId, userId),
           eq(commuteDailyEditions.kind, kind),
-          eq(commuteDailyEditions.weekday, targetWeekday),
+          eq(commuteDailyEditions.weekday, editionWeekday),
         ),
       )
       .orderBy(desc(commuteDailyEditions.weekKey), desc(commuteDailyEditions.createdAt))
@@ -661,7 +819,9 @@ export async function applyCommuteDayToSpotify(
 
     if (!edition) {
       throw new Error(
-        `No ${kind} commute edition found for ${WEEKDAY_NAMES[targetWeekday] ?? `day ${targetWeekday}`}. Generate the week's playlists first.`,
+        kind === "discovery"
+          ? "No Weekly Discovery edition found yet. Generate the week's playlists first."
+          : `No ${kind} commute edition found for ${WEEKDAY_NAMES[targetWeekday] ?? `day ${targetWeekday}`}. Generate the week's playlists first.`,
       );
     }
 
@@ -672,13 +832,18 @@ export async function applyCommuteDayToSpotify(
 
     if (uris.length === 0) {
       throw new Error(
-        `No matched Spotify tracks found in the ${WEEKDAY_NAMES[targetWeekday]} ${kind} edition.`,
+        kind === "discovery"
+          ? "No matched Spotify tracks found in the Weekly Discovery edition."
+          : `No matched Spotify tracks found in the ${WEEKDAY_NAMES[targetWeekday]} ${kind} edition.`,
       );
     }
 
     let playlistId = config.spotifyPlaylistId;
     let spotifyUrl = config.spotifyUrl;
-    const dayLabel = WEEKDAY_NAMES[targetWeekday] ?? "Weekday";
+    const dayLabel =
+      kind === "discovery"
+        ? `Week of ${edition.weekKey}`
+        : (WEEKDAY_NAMES[targetWeekday] ?? "Weekday");
     const description = `${config.description} (${dayLabel}: ${edition.theme})`;
 
     if (!playlistId) {
@@ -704,13 +869,14 @@ export async function applyCommuteDayToSpotify(
     }
 
     const now = new Date();
+    const appliedKey = kind === "discovery" ? edition.weekKey : dateKey;
     await db
       .update(commuteConfigs)
       .set({
         spotifyPlaylistId: playlistId,
         spotifyUrl,
-        lastAppliedDateKey: dateKey,
-        lastAppliedWeekday: targetWeekday,
+        lastAppliedDateKey: appliedKey,
+        lastAppliedWeekday: editionWeekday,
         lastAppliedAt: now,
         updatedAt: now,
       })
@@ -745,7 +911,7 @@ export async function applyCommuteDayToSpotify(
 
     applied.push({
       kind,
-      weekday: targetWeekday,
+      weekday: editionWeekday,
       playlistId,
       spotifyUrl,
       trackCount: uris.length,
@@ -851,6 +1017,7 @@ export async function getCommuteState(userId: string) {
     activeWeekKey,
     morningEditions: editions.filter((e) => e.kind === "morning"),
     eveningEditions: editions.filter((e) => e.kind === "evening"),
+    discoveryEdition: editions.find((e) => e.kind === "discovery") ?? null,
   };
 }
 

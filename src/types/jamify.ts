@@ -138,7 +138,7 @@ export interface RecommendationsState {
   playlists: RecommendedPlaylistItem[];
 }
 
-export type CommuteKind = "morning" | "evening";
+export type CommuteKind = "morning" | "evening" | "discovery";
 
 export interface CommuteConfigItem {
   id: string;
@@ -205,4 +205,5 @@ export interface CommuteState {
   activeWeekKey: string | null;
   morningEditions: CommuteDailyEditionItem[];
   eveningEditions: CommuteDailyEditionItem[];
+  discoveryEdition: CommuteDailyEditionItem | null;
 }

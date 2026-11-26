@@ -9,7 +9,7 @@ import { ensureCommuteConfigs } from "@/lib/commute-playlists";
 export const dynamic = "force-dynamic";
 
 const patchConfigSchema = z.object({
-  kind: z.enum(["morning", "evening"]),
+  kind: z.enum(["morning", "evening", "discovery"]),
   name: z.string().trim().min(1).max(100).optional(),
   enabled: z.boolean().optional(),
 });

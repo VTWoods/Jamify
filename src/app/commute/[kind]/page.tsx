@@ -5,7 +5,7 @@ import type { CommuteKind } from "@/types/jamify";
 
 export const dynamic = "force-dynamic";
 
-const VALID_KINDS = new Set<CommuteKind>(["morning", "evening"]);
+const VALID_KINDS = new Set<CommuteKind>(["morning", "evening", "discovery"]);
 
 export default async function CommuteKindPage({
   params,

@@ -265,8 +265,20 @@ async function pollBackgroundInteraction(
       interaction.status === "failed" ||
       interaction.status === "cancelled"
     ) {
+      const errorDetails = (
+        interaction as {
+          errors?: Array<{ code?: string; message?: string }>;
+        }
+      ).errors;
+      const summary = errorDetails?.length
+        ? errorDetails
+            .map((e) => [e.code, e.message].filter(Boolean).join(": "))
+            .join("; ")
+        : "";
       throw new Error(
-        `Gemini interaction ${interaction.status}`,
+        summary
+          ? `Gemini interaction ${interaction.status} (${summary})`
+          : `Gemini interaction ${interaction.status}`,
       );
     }
 
@@ -277,6 +289,40 @@ async function pollBackgroundInteraction(
   }
 
   throw new Error(`Timed out waiting for ${PRIMARY_GEMINI_MODEL}.`);
+}
+
+function isTransient503Error(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const status =
+    (err as { status?: number; statusCode?: number }).status ??
+    (err as { statusCode?: number }).statusCode;
+  if (status === 503) return true;
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.includes("503") || msg.toLowerCase().includes("high demand");
+}
+
+async function createFallbackWithRetry<T>(
+  jobId: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const delaysMs = [4_000, 8_000, 15_000];
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= delaysMs.length; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (!isTransient503Error(err) || attempt === delaysMs.length) {
+        throw err;
+      }
+      const waitSec = Math.round(delaysMs[attempt] / 1000);
+      await updateJob(jobId, {
+        stage: `${FALLBACK_GEMINI_MODEL} busy (503) — retrying in ${waitSec}s (${attempt + 1}/${delaysMs.length})`,
+      });
+      await new Promise((resolve) => setTimeout(resolve, delaysMs[attempt]));
+    }
+  }
+  throw lastErr;
 }
 
 async function runWithModelFallback(
@@ -352,12 +398,14 @@ async function runWithModelFallback(
       stage: `Falling back to ${FALLBACK_GEMINI_MODEL}`,
     });
 
-    const fallbackInteraction = await client.interactions.create({
-      model: FALLBACK_GEMINI_MODEL,
-      input: prompt,
-      system_instruction: SYSTEM_INSTRUCTION,
-      response_format: responseFormat,
-    });
+    const fallbackInteraction = await createFallbackWithRetry(jobId, () =>
+      client.interactions.create({
+        model: FALLBACK_GEMINI_MODEL,
+        input: prompt,
+        system_instruction: SYSTEM_INSTRUCTION,
+        response_format: responseFormat,
+      }),
+    );
 
     const output = parseGeminiRecommendationsJson(
       fallbackInteraction.output_text,

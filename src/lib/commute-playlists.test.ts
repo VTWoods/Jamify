@@ -8,6 +8,7 @@ import {
 import {
   getLocalClockParts,
   shouldRunDailyRotation,
+  shouldRunWeeklyDiscoverySync,
   shouldRunWeeklyGeneration,
 } from "./commute-schedule-clock";
 
@@ -36,27 +37,44 @@ describe("commute schedule clock", () => {
   });
 
   it("triggers daily rotation on weekdays (Mon–Fri) at 1:00 AM once per day", () => {
-    // Monday 00:59 EST -> too early
     const mon0059 = getLocalClockParts(new Date("2026-11-30T05:59:00Z"), tz);
     expect(shouldRunDailyRotation(mon0059, null)).toBe(false);
 
-    // Monday 01:00 EST -> trigger
     const mon0100 = getLocalClockParts(new Date("2026-11-30T06:00:00Z"), tz);
     expect(mon0100.weekday).toBe(1);
     expect(mon0100.dateKey).toBe("2026-11-30");
     expect(shouldRunDailyRotation(mon0100, null)).toBe(true);
     expect(shouldRunDailyRotation(mon0100, "2026-11-30")).toBe(false);
 
-    // Sunday & Saturday -> never rotate
     const sun0100 = getLocalClockParts(new Date("2026-11-29T06:00:00Z"), tz);
     const sat0100 = getLocalClockParts(new Date("2026-11-28T06:00:00Z"), tz);
     expect(shouldRunDailyRotation(sun0100, null)).toBe(false);
     expect(shouldRunDailyRotation(sat0100, null)).toBe(false);
   });
+
+  it("syncs Weekly Discovery once on Sunday after weekly generation finishes", () => {
+    const sun0100 = getLocalClockParts(new Date("2026-11-29T06:00:00Z"), tz);
+    // Not generated for this week yet
+    expect(shouldRunWeeklyDiscoverySync(sun0100, null, null)).toBe(false);
+    // Generated for this week, not yet synced
+    expect(shouldRunWeeklyDiscoverySync(sun0100, "2026-11-29", null)).toBe(
+      true,
+    );
+    // Already synced for this week
+    expect(
+      shouldRunWeeklyDiscoverySync(sun0100, "2026-11-29", "2026-11-29"),
+    ).toBe(false);
+
+    // Weekday should not re-sync discovery
+    const mon0100 = getLocalClockParts(new Date("2026-11-30T06:00:00Z"), tz);
+    expect(shouldRunWeeklyDiscoverySync(mon0100, "2026-11-29", null)).toBe(
+      false,
+    );
+  });
 });
 
-describe("commute playlist helpers", () => {
-  it("builds a prompt referencing followed artists for both morning and evening commutes", () => {
+describe("commute & discovery playlist helpers", () => {
+  it("builds a prompt referencing followed artists for morning, evening, and discovery", () => {
     const prompt = buildCommutePrompt([
       { name: "Daft Punk", genres: ["electronic"] },
       { name: "Khruangbin", genres: ["psychedelic soul"] },
@@ -65,6 +83,7 @@ describe("commute playlist helpers", () => {
     expect(prompt).toContain("Khruangbin");
     expect(prompt).toContain("Morning Commute");
     expect(prompt).toContain("Evening Commute");
+    expect(prompt).toContain("Weekly Discovery");
   });
 
   it("trims resolved tracks to approximately 60 minutes", () => {
@@ -82,7 +101,7 @@ describe("commute playlist helpers", () => {
     expect(result.totalDurationMs).toBe(60 * 60_000);
   });
 
-  it("parses valid 5-day morning and evening commute JSON", () => {
+  it("parses valid 5-day morning, 5-day evening, and weekly discovery JSON", () => {
     const makeDays = (prefix: string) =>
       [1, 2, 3, 4, 5].map((weekday) => ({
         weekday,
@@ -97,11 +116,19 @@ describe("commute playlist helpers", () => {
       JSON.stringify({
         morning: makeDays("Upbeat"),
         evening: makeDays("Chill"),
+        discovery: {
+          theme: "Fresh Indie & Synth Finds",
+          tracks: Array.from({ length: 12 }, (_, i) => ({
+            title: `New Song ${i + 1}`,
+            artist: `Unfollowed Artist ${i + 1}`,
+          })),
+        },
       }),
     );
 
     expect(parsed.morning).toHaveLength(5);
     expect(parsed.evening).toHaveLength(5);
+    expect(parsed.discovery.tracks).toHaveLength(12);
     expect(parsed.morning[0].weekday).toBe(1);
     expect(parsed.evening[4].weekday).toBe(5);
   });

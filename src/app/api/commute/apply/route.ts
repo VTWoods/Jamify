@@ -7,8 +7,8 @@ import { SpotifyApiError } from "@/lib/spotify";
 export const dynamic = "force-dynamic";
 
 const applySchema = z.object({
-  kind: z.enum(["morning", "evening"]).optional(),
-  weekday: z.number().int().min(1).max(5).optional(),
+  kind: z.enum(["morning", "evening", "discovery"]).optional(),
+  weekday: z.number().int().min(0).max(5).optional(),
 });
 
 export async function POST(request: NextRequest) {

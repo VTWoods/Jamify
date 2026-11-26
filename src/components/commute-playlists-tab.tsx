@@ -7,6 +7,7 @@ import {
   CalendarClock,
   Check,
   Clock,
+  Compass,
   ExternalLink,
   Loader2,
   Moon,
@@ -151,11 +152,17 @@ export function CommutePlaylistsTab({
       if (!res.ok) {
         throw new Error(data.error ?? "Failed to update Spotify playlist.");
       }
-      const dayName =
-        WEEKDAYS.find((w) => w.num === weekday)?.full ?? `Day ${weekday}`;
-      setSuccessMsg(
-        `Updated ${activeKind === "morning" ? "Morning" : "Evening"} Commute on Spotify with ${dayName}'s lineup.`,
-      );
+      if (activeKind === "discovery") {
+        setSuccessMsg(
+          "Updated Weekly Discovery on Spotify with this week's new-artist mix.",
+        );
+      } else {
+        const dayName =
+          WEEKDAYS.find((w) => w.num === weekday)?.full ?? `Day ${weekday}`;
+        setSuccessMsg(
+          `Updated ${activeKind === "morning" ? "Morning" : "Evening"} Commute on Spotify with ${dayName}'s lineup.`,
+        );
+      }
       await fetchState();
     } catch (err) {
       setError(
@@ -206,11 +213,18 @@ export function CommutePlaylistsTab({
   }
 
   const config = state?.configs.find((c) => c.kind === activeKind);
+  const isDiscovery = activeKind === "discovery";
   const editions =
     activeKind === "morning"
       ? (state?.morningEditions ?? [])
-      : (state?.eveningEditions ?? []);
-  const selectedEdition = editions.find((e) => e.weekday === selectedWeekday);
+      : activeKind === "evening"
+        ? (state?.eveningEditions ?? [])
+        : state?.discoveryEdition
+          ? [state.discoveryEdition]
+          : [];
+  const selectedEdition = isDiscovery
+    ? (state?.discoveryEdition ?? undefined)
+    : editions.find((e) => e.weekday === selectedWeekday);
   const latestJob = state?.latestJob;
 
   return (
@@ -224,8 +238,9 @@ export function CommutePlaylistsTab({
               <span>Constant Commute Playlists</span>
             </div>
             <p className="mt-1 text-xs text-zinc-400">
-              5 daily ~1-hour mixes from your followed artists, generated every
-              Sunday at 1 AM and rotated into Spotify every weekday at 1 AM.
+              Morning &amp; Evening commutes rotate Mon–Fri at 1 AM from
+              followed artists, plus Weekly Discovery refreshes Sundays at 1 AM
+              with new songs from unfollowed artists.
             </p>
           </div>
           <button
@@ -301,34 +316,42 @@ export function CommutePlaylistsTab({
         </div>
       )}
 
-      {/* Morning / Evening Toggle (URL-backed) */}
-      <div className="grid grid-cols-2 gap-2.5">
+      {/* Morning / Evening / Discovery Toggle (URL-backed) */}
+      <div className="grid grid-cols-3 gap-2">
         <Link
           href="/commute/morning"
-          className={`flex items-center justify-between rounded-2xl border px-3.5 py-3 transition ${
+          className={`flex items-center justify-center gap-1.5 rounded-2xl border px-2.5 py-3 transition ${
             activeKind === "morning"
               ? "border-amber-400/60 bg-amber-400/15 text-amber-200"
               : "border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:border-zinc-700"
           }`}
         >
-          <span className="inline-flex items-center gap-2 text-xs font-semibold">
-            <Sun className="h-4 w-4" />
-            Morning (Upbeat)
-          </span>
+          <Sun className="h-4 w-4 shrink-0" />
+          <span className="text-xs font-semibold">Morning</span>
         </Link>
 
         <Link
           href="/commute/evening"
-          className={`flex items-center justify-between rounded-2xl border px-3.5 py-3 transition ${
+          className={`flex items-center justify-center gap-1.5 rounded-2xl border px-2.5 py-3 transition ${
             activeKind === "evening"
               ? "border-indigo-400/60 bg-indigo-400/15 text-indigo-200"
               : "border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:border-zinc-700"
           }`}
         >
-          <span className="inline-flex items-center gap-2 text-xs font-semibold">
-            <Moon className="h-4 w-4" />
-            Evening (Chill)
-          </span>
+          <Moon className="h-4 w-4 shrink-0" />
+          <span className="text-xs font-semibold">Evening</span>
+        </Link>
+
+        <Link
+          href="/commute/discovery"
+          className={`flex items-center justify-center gap-1.5 rounded-2xl border px-2.5 py-3 transition ${
+            activeKind === "discovery"
+              ? "border-emerald-400/60 bg-emerald-400/15 text-emerald-200"
+              : "border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:border-zinc-700"
+          }`}
+        >
+          <Compass className="h-4 w-4 shrink-0" />
+          <span className="text-xs font-semibold">Discovery</span>
         </Link>
       </div>
 
@@ -341,18 +364,30 @@ export function CommutePlaylistsTab({
               <p className="mt-0.5 text-xs text-zinc-400">
                 {activeKind === "morning"
                   ? "Upbeat, higher-tempo · Followed artists · ~1 hour"
-                  : "Chill, relaxing · Followed artists · ~1 hour"}
+                  : activeKind === "evening"
+                    ? "Chill, relaxing · Followed artists · ~1 hour"
+                    : "New songs from unfollowed similar artists · Refreshed Sundays at 1 AM"}
               </p>
-              {config.lastAppliedWeekday && (
+              {config.lastAppliedAt && (
                 <p className="mt-1 text-[11px] text-zinc-500">
-                  Active on Spotify:{" "}
-                  <strong className="text-zinc-300">
-                    {WEEKDAYS.find((w) => w.num === config.lastAppliedWeekday)
-                      ?.full ?? `Day ${config.lastAppliedWeekday}`}
-                  </strong>
-                  {config.lastAppliedAt
-                    ? ` · Updated ${new Date(config.lastAppliedAt).toLocaleString()}`
-                    : ""}
+                  {isDiscovery ? (
+                    <>
+                      Last synced:{" "}
+                      <strong className="text-zinc-300">
+                        {new Date(config.lastAppliedAt).toLocaleString()}
+                      </strong>
+                    </>
+                  ) : (
+                    <>
+                      Active on Spotify:{" "}
+                      <strong className="text-zinc-300">
+                        {WEEKDAYS.find(
+                          (w) => w.num === config.lastAppliedWeekday,
+                        )?.full ?? `Day ${config.lastAppliedWeekday}`}
+                      </strong>
+                      {` · Updated ${new Date(config.lastAppliedAt).toLocaleString()}`}
+                    </>
+                  )}
                 </p>
               )}
             </div>
@@ -386,43 +421,46 @@ export function CommutePlaylistsTab({
         </div>
       )}
 
-      {/* Weekday Selector Pills (Mon–Fri) */}
+      {/* Weekday Selector Pills (Mon–Fri) for Morning/Evening, or Weekly Discovery view */}
       {editions.length > 0 ? (
         <div className="space-y-3">
-          <div className="grid grid-cols-5 gap-1.5">
-            {WEEKDAYS.map((day) => {
-              const isSelected = selectedWeekday === day.num;
-              const isActiveOnSpotify = config?.lastAppliedWeekday === day.num;
-              return (
-                <button
-                  key={day.num}
-                  type="button"
-                  onClick={() => setSelectedWeekday(day.num)}
-                  className={`relative rounded-xl border py-2 text-center text-xs font-semibold transition ${
-                    isSelected
-                      ? "border-emerald-500 bg-emerald-500/15 text-emerald-300"
-                      : "border-zinc-800 bg-zinc-900/50 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
-                  }`}
-                >
-                  {day.short}
-                  {isActiveOnSpotify && (
-                    <span
-                      className="mx-auto mt-1 block h-1.5 w-1.5 rounded-full bg-emerald-400"
-                      title="Currently live in Spotify"
-                    />
-                  )}
-                </button>
-              );
-            })}
-          </div>
+          {!isDiscovery && (
+            <div className="grid grid-cols-5 gap-1.5">
+              {WEEKDAYS.map((day) => {
+                const isSelected = selectedWeekday === day.num;
+                const isActiveOnSpotify = config?.lastAppliedWeekday === day.num;
+                return (
+                  <button
+                    key={day.num}
+                    type="button"
+                    onClick={() => setSelectedWeekday(day.num)}
+                    className={`relative rounded-xl border py-2 text-center text-xs font-semibold transition ${
+                      isSelected
+                        ? "border-emerald-500 bg-emerald-500/15 text-emerald-300"
+                        : "border-zinc-800 bg-zinc-900/50 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+                    }`}
+                  >
+                    {day.short}
+                    {isActiveOnSpotify && (
+                      <span
+                        className="mx-auto mt-1 block h-1.5 w-1.5 rounded-full bg-emerald-400"
+                        title="Currently live in Spotify"
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {selectedEdition && (
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4 space-y-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-zinc-100">
-                    {WEEKDAYS.find((w) => w.num === selectedWeekday)?.full}:{" "}
-                    {selectedEdition.theme}
+                    {isDiscovery
+                      ? `This Week: ${selectedEdition.theme}`
+                      : `${WEEKDAYS.find((w) => w.num === selectedWeekday)?.full}: ${selectedEdition.theme}`}
                   </p>
                   <p className="mt-0.5 inline-flex items-center gap-1.5 text-xs text-zinc-400">
                     <Clock className="h-3.5 w-3.5" />
@@ -434,10 +472,12 @@ export function CommutePlaylistsTab({
                 <button
                   type="button"
                   disabled={applyingDay !== null}
-                  onClick={() => void handleApplyDay(selectedWeekday)}
+                  onClick={() =>
+                    void handleApplyDay(isDiscovery ? 0 : selectedWeekday)
+                  }
                   className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-zinc-100 px-3 py-2 text-xs font-semibold text-zinc-950 hover:bg-white disabled:opacity-50"
                 >
-                  {applyingDay === selectedWeekday ? (
+                  {applyingDay === (isDiscovery ? 0 : selectedWeekday) ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : (
                     <Upload className="h-3.5 w-3.5" />

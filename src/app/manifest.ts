@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
+    id: "/",
     name: "Jamify",
     short_name: "Jamify",
     description: "Manage custom playlists in Spotify with Gemini",

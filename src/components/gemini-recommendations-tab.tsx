@@ -240,7 +240,7 @@ export function GeminiRecommendationsTab({
             Default: <strong className="text-zinc-200">gemini-4-hydrogen</strong>
           </span>
           <span className="rounded-full border border-zinc-700/80 bg-zinc-950/70 px-2.5 py-0.5">
-            Fallback: <strong className="text-zinc-200">gemini-3.5-flash</strong>
+            Fallback: <strong className="text-zinc-200">gemini-3.5-flash-lite</strong>
           </span>
         </div>
       </div>

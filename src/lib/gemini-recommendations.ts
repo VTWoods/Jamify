@@ -18,7 +18,7 @@ import {
 } from "@/lib/spotify-sync";
 
 export const PRIMARY_GEMINI_MODEL = "gemini-4-hydrogen";
-export const FALLBACK_GEMINI_MODEL = "gemini-3.5-flash";
+export const FALLBACK_GEMINI_MODEL = "gemini-3.5-flash-lite";
 
 const JOB_POLL_INTERVAL_MS = 3_000;
 const JOB_MAX_WAIT_MS = 4 * 60 * 1000; // 4 minutes

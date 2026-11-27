@@ -7,9 +7,9 @@ import {
 } from "./gemini-recommendations";
 
 describe("Gemini recommendations helpers", () => {
-  it("uses gemini-4-hydrogen as default and gemini-3.5-flash as fallback", () => {
+  it("uses gemini-4-hydrogen as default and gemini-3.5-flash-lite as fallback", () => {
     expect(PRIMARY_GEMINI_MODEL).toBe("gemini-4-hydrogen");
-    expect(FALLBACK_GEMINI_MODEL).toBe("gemini-3.5-flash");
+    expect(FALLBACK_GEMINI_MODEL).toBe("gemini-3.5-flash-lite");
   });
 
   it("builds Spotify context and excludes all known artists from recommendations", () => {

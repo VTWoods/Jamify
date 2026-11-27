@@ -21,13 +21,17 @@ export function PwaInstallButton() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const mediaQuery = window.matchMedia("(display-mode: standalone)");
-    const checkStandalone = () =>
-      mediaQuery.matches ||
+    const displayModeQueries = [
+      window.matchMedia("(display-mode: fullscreen)"),
+      window.matchMedia("(display-mode: standalone)"),
+      window.matchMedia("(display-mode: window-controls-overlay)"),
+    ];
+    const checkInstalledDisplayMode = () =>
+      displayModeQueries.some((query) => query.matches) ||
       (window.navigator as Navigator & { standalone?: boolean }).standalone ===
         true;
 
-    setIsInstalled(checkStandalone());
+    setIsInstalled(checkInstalledDisplayMode());
     setDeferredPrompt(getDeferredInstallPrompt());
 
     const ua = window.navigator.userAgent;
@@ -54,17 +58,21 @@ export function PwaInstallButton() {
     };
 
     const handleDisplayModeChange = () => {
-      setIsInstalled(checkStandalone());
+      setIsInstalled(checkInstalledDisplayMode());
     };
 
     window.addEventListener(PWA_PROMPT_CHANGE_EVENT, syncPrompt);
     window.addEventListener("appinstalled", handleAppInstalled);
-    mediaQuery.addEventListener("change", handleDisplayModeChange);
+    displayModeQueries.forEach((query) =>
+      query.addEventListener("change", handleDisplayModeChange),
+    );
 
     return () => {
       window.removeEventListener(PWA_PROMPT_CHANGE_EVENT, syncPrompt);
       window.removeEventListener("appinstalled", handleAppInstalled);
-      mediaQuery.removeEventListener("change", handleDisplayModeChange);
+      displayModeQueries.forEach((query) =>
+        query.removeEventListener("change", handleDisplayModeChange),
+      );
     };
   }, []);
 

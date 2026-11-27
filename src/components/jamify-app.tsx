@@ -44,7 +44,7 @@ export function JamifyApp({
 
   if (!user) {
     return (
-      <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-between px-6 py-12">
+      <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-between px-6 pb-12 pt-[calc(3rem+env(safe-area-inset-top))]">
         <div className="space-y-8">
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-2">
@@ -93,7 +93,7 @@ export function JamifyApp({
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col bg-zinc-950">
       {/* Sticky header */}
-      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-zinc-800/80 bg-zinc-950/90 px-4 py-3 backdrop-blur-md">
+      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-zinc-800/80 bg-zinc-950/90 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur-md">
         <Link href="/spotify" className="flex items-center gap-2">
           <Image
             src="/icons/icon-192.png"

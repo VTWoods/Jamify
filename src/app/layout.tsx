@@ -25,13 +25,16 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "Jamify",
   },
+  other: {
+    "apple-mobile-web-app-capable": "yes",
+  },
   formatDetection: {
     telephone: false,
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#1db954",
+  themeColor: "#09090b",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",

@@ -6,10 +6,13 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Jamify",
     short_name: "Jamify",
     description: "Manage custom playlists in Spotify with Gemini",
+    lang: "en",
     start_url: "/",
-    display: "standalone",
+    scope: "/",
+    display: "fullscreen",
+    display_override: ["fullscreen", "standalone"],
     background_color: "#09090b",
-    theme_color: "#1db954",
+    theme_color: "#09090b",
     orientation: "portrait",
     icons: [
       {

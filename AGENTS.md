@@ -54,7 +54,7 @@ Keep updates concise and factual—document what actually exists in the repo, no
 ├── package.json                     # Dependencies and npm scripts
 ├── postcss.config.mjs               # Tailwind CSS v4 PostCSS config
 ├── public/
-│   ├── icons/                       # PWA PNG icons (192x192, 512x512)
+│   ├── icons/                       # Spinning green vinyl PWA icons (SVG, 180/192/512 PNG)
 │   └── sw.js                        # PWA service worker (caches shell, bypasses /api/*)
 ├── scripts/
 │   ├── docker-entrypoint.sh         # Container entrypoint: runs migrations then starts server

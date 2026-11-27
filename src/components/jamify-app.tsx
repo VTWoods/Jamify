@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { Car, Disc3, Library, LogOut, Sparkles } from "lucide-react";
 import { CommutePlaylistsTab } from "@/components/commute-playlists-tab";
@@ -94,9 +95,14 @@ export function JamifyApp({
       {/* Sticky header */}
       <header className="sticky top-0 z-20 flex items-center justify-between border-b border-zinc-800/80 bg-zinc-950/90 px-4 py-3 backdrop-blur-md">
         <Link href="/spotify" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-400">
-            <Disc3 className="h-5 w-5" />
-          </div>
+          <Image
+            src="/icons/icon-192.png"
+            alt="Jamify"
+            width={32}
+            height={32}
+            unoptimized
+            className="h-8 w-8 rounded-xl ring-1 ring-emerald-500/25"
+          />
           <div>
             <h1 className="text-sm font-bold tracking-tight text-zinc-50">
               Jamify
